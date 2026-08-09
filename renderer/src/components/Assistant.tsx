@@ -1,0 +1,9 @@
+import { useState } from "react";
+import { useIDEStore } from "../store/ideStore";
+
+type Message = { role: "assistant" | "user"; text: string };
+export function Assistant(): JSX.Element {
+  const [messages, setMessages] = useState<Message[]>([{ role: "assistant", text: "Use a configured AI provider to explain, generate, debug, or optimize Silq code." }]); const [input, setInput] = useState(""); const [busy, setBusy] = useState(false); const code = useIDEStore((state) => state.tabs.find((tab) => tab.id === state.activeTab)?.content ?? "");
+  const send = async (action: AssistantAction = "explain") => { const question = input.trim() || action; if (!question || busy) return; setMessages((all) => [...all, { role: "user", text: question }]); setInput(""); setBusy(true); try { const response = await window.silq?.completeAI(action, code); setMessages((all) => [...all, { role: "assistant", text: response ?? "AI transport is unavailable." }]); } catch (error) { setMessages((all) => [...all, { role: "assistant", text: error instanceof Error ? error.message : String(error) }]); } finally { setBusy(false); } };
+  return <aside className="assistant"><div className="panel-title">✦ AI ASSISTANT</div><div className="messages">{messages.map((message, index) => <div className={`message ${message.role}`} key={index}>{message.text}</div>)}{busy && <div className="message assistant">Thinking…</div>}</div><div className="prompt"><input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void send()} placeholder="Ask about your code…" /><button onClick={() => void send()}>↑</button></div><div className="quick-actions"><button onClick={() => void send("explain")}>Explain</button><button onClick={() => void send("fix")}>Fix errors</button><button onClick={() => void send("optimize")}>Optimize</button><button onClick={() => void send("silq-to-openqasm")}>OpenQASM</button></div></aside>;
+}

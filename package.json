@@ -1,0 +1,46 @@
+{
+  "name": "silq-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A desktop IDE for Silq quantum programming",
+  "main": "dist/app/main.js",
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "dev": "tsc -p tsconfig.json && concurrently -k \"vite --host 127.0.0.1\" \"wait-on tcp:5173 && electron .\"",
+    "build": "tsc -p tsconfig.app.json && vite build && tsc -p tsconfig.json",
+    "start": "electron .",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "pnpm build && playwright test"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "monaco-editor": "^0.52.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.1",
+    "@types/node": "^22.13.4",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@typescript-eslint/eslint-plugin": "^8.24.0",
+    "@typescript-eslint/parser": "^8.24.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "electron": "^34.0.2",
+    "eslint": "^9.20.1",
+    "eslint-config-prettier": "^10.0.1",
+    "prettier": "^3.5.0",
+    "tailwindcss": "^3.4.17",
+    "postcss": "^8.5.2",
+    "autoprefixer": "^10.4.20",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0",
+    "vitest": "^3.0.5",
+    "wait-on": "^8.0.2"
+  }
+}
