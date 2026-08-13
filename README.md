@@ -20,5 +20,3 @@ Run checks with `pnpm lint`, `pnpm test`, and `pnpm build`.
 - Console, Problems, Terminal, and Simulation Output panels.
 - Local AI assistant UI; implement an `AIProvider` with environment-provided credentials before enabling a hosted provider.
 - Extension host contracts for commands, languages, themes, snippets, and panels.
-
-See [docs/Architecture.md](docs/Architecture.md), [docs/API.md](docs/API.md), and [docs/Contributing.md](docs/Contributing.md).
