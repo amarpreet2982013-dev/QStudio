@@ -1,0 +1,6 @@
+fn main() {
+  let q = new Qubit[2];
+  X(q[0]);
+  CNOT(q[0], q[1]);
+  return measure(q);
+}

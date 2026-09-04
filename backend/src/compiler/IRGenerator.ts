@@ -9,9 +9,9 @@ export class IRGenerator {
     ast.body.forEach(visit); return { ir: { qubits, operations }, diagnostics };
   }
   private operation(node: GateNode, operations: IROperation[], diagnostics: Diagnostic[], semantic: SemanticModel): void {
-    const baseOpcode = opcodes[node.gate]; const opcode = node.controls.length > 0 && baseOpcode === "x" ? "cx" : node.controls.length > 0 && baseOpcode === "z" ? "cz" : baseOpcode; if (!opcode) { diagnostics.push({ severity: "error", message: `Unsupported gate '${node.gate}'.`, line: node.range.line, column: node.range.column }); return; }
+    const baseOpcode = opcodes[node.gate]; const opcode = node.controls.length > 0 && baseOpcode === "x" ? "cx" : node.controls.length > 0 && baseOpcode === "z" ? "cz" : baseOpcode;    if (!opcode) { diagnostics.push({ severity: "error", message: `Unsupported gate '${node.gate}'.`, line: node.range.line, column: node.range.column, endLine: node.range.line, endColumn: node.range.column + node.gate.length, range: node.range }); return; }
     const targets = node.targets.map((target) => target.index); const controls = node.controls.map((control) => control.index);
-    if ((opcode === "cx" || opcode === "cz" || opcode === "swap") && targets.length + controls.length < 2) diagnostics.push({ severity: "error", message: `${node.gate.toUpperCase()} requires two qubits.`, line: node.range.line, column: node.range.column });
+    if ((opcode === "cx" || opcode === "cz" || opcode === "swap") && targets.length + controls.length < 2) diagnostics.push({ severity: "error", message: `${node.gate.toUpperCase()} requires two qubits.`, line: node.range.line, column: node.range.column, endLine: node.range.line, endColumn: node.range.column + node.gate.length, range: node.range });
     operations.push({ opcode, targets, controls, source: node.range });
   }
 }

@@ -1,12 +1,86 @@
 import { useEffect, useState } from "react";
 import { SilqCompiler } from "../../../backend/src/compiler/SilqCompiler";
-import type { ProgramNode, StatementNode } from "../../../backend/src/compiler/types";
+import type { ProgramNode, QubitRef, StatementNode } from "../../../backend/src/compiler/types";
 import { useIDEStore } from "../store/ideStore";
 
 const compiler = new SilqCompiler();
+
 export function AstExplorer(): JSX.Element {
-  const source = useIDEStore((state) => state.tabs.find((tab) => tab.id === state.activeTab)?.content ?? ""); const selectAst = useIDEStore((state) => state.selectAst); const [ast, setAst] = useState<ProgramNode>();
-  useEffect(() => { let active = true; const timer = window.setTimeout(() => { void compiler.parse(source).then((result) => { if (active) setAst(result); }); }, 180); return () => { active = false; window.clearTimeout(timer); }; }, [source]);
-  return <section className="ast"><div className="subheading">AST EXPLORER</div>{ast ? <AstNode label="Program" node={ast} select={selectAst} /> : <p className="muted">Parsing source…</p>}</section>;
+  const source = useIDEStore((state) => state.tabs.find((tab) => tab.id === state.activeTab)?.content ?? "");
+  const selectAst = useIDEStore((state) => state.selectAst);
+  const [ast, setAst] = useState<ProgramNode>();
+
+  useEffect(() => {
+    let active = true;
+    const timer = window.setTimeout(() => {
+      void compiler.parse(source).then((result: ProgramNode) => {
+        if (active) setAst(result);
+      });
+    }, 180);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [source]);
+
+  return (
+    <section className="ast">
+      <div className="subheading">AST EXPLORER</div>
+      {ast ? <AstNode label="ProgramNode" node={ast} select={selectAst} /> : <p className="muted">Parsing AST...</p>}
+    </section>
+  );
 }
-function AstNode({ label, node, select }: { label: string; node: ProgramNode | StatementNode; select(range: { start: number; end: number }): void }): JSX.Element { const children = node.kind === "Program" || node.kind === "Function" ? node.body : []; return <details open className="ast-node"><summary onClick={() => select(node.range)}>{label}{"name" in node ? ` · ${node.name}` : ""}</summary>{children.map((child, index) => <AstNode key={`${child.range.start}-${index}`} label={child.kind} node={child} select={select} />)}</details>; }
+
+function AstNode({
+  label,
+  node,
+  select,
+}: {
+  label: string;
+  node: ProgramNode | StatementNode;
+  select(range: { start: number; end: number }): void;
+}): JSX.Element {
+  const children = node.kind === "Program" || node.kind === "Function" ? node.body : [];
+
+  const getDetails = (): string => {
+    switch (node.kind) {
+      case "Function":
+        return `fn ${node.name}`;
+      case "QubitDeclaration":
+        return `qubit: ${node.name}[${node.size}]`;
+      case "Gate": {
+        const tgt = node.targets.map((t: QubitRef) => `${t.name}[${t.index}]`).join(", ");
+        const ctrl = node.controls.map((c: QubitRef) => `${c.name}[${c.index}]`).join(", ");
+        return `${node.gate.toUpperCase()}(${tgt})${ctrl ? ` ctrl: ${ctrl}` : ""}`;
+      }
+      case "Variable":
+        return `var: ${node.name}`;
+      case "Return":
+        return "return statement";
+      default:
+        return "";
+    }
+  };
+
+  return (
+    <details open className="ast-node">
+      <summary onClick={() => select(node.range)}>
+        <span className="ast-kind">{node.kind}</span>
+        <span className="ast-detail">{getDetails()}</span>
+      </summary>
+
+      {children.length > 0 && (
+        <div className="ast-children">
+          {children.map((child: StatementNode, index: number) => (
+            <AstNode
+              key={`${child.range.start}-${index}`}
+              label={child.kind}
+              node={child}
+              select={select}
+            />
+          ))}
+        </div>
+      )}
+    </details>
+  );
+}

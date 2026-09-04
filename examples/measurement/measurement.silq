@@ -1,0 +1,5 @@
+fn main() {
+  let q = new Qubit[2];
+  H(q[0]);
+  measure(q[0]);
+}

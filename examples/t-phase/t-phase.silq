@@ -1,0 +1,5 @@
+fn main() {
+  let q = new Qubit[1];
+  H(q[0]);
+  T(q[0]);
+}

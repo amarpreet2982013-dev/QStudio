@@ -19,8 +19,17 @@ async function createWindow(): Promise<void> {
     backgroundColor: "#10131a",
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, sandbox: true }
   });
-  if (isDev) await windowRef.loadURL("http://127.0.0.1:5173");
-  else await windowRef.loadFile(path.join(__dirname, "../renderer/index.html"));
+  if (isDev && process.env.VITE_DEV_SERVER_URL) {
+    await windowRef.loadURL(process.env.VITE_DEV_SERVER_URL);
+  } else if (isDev) {
+    try {
+      await windowRef.loadURL("http://127.0.0.1:5173");
+    } catch {
+      await windowRef.loadFile(path.join(__dirname, "../renderer/index.html"));
+    }
+  } else {
+    await windowRef.loadFile(path.join(__dirname, "../renderer/index.html"));
+  }
 }
 
 app.whenReady().then(async () => {

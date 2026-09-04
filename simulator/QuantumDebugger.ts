@@ -5,8 +5,13 @@ export interface DebugSnapshot { step: number; operation?: QuantumIR["operations
 export class QuantumDebugger {
   private cursor = 0; private breakpoints = new Set<number>(); private readonly snapshots = new Map<number, StateVectorResult>();
   constructor(private readonly program: QuantumIR, private readonly simulator = new StateVectorSimulator()) {}
+  get currentStep(): number { return this.cursor; }
+  get totalSteps(): number { return this.program.operations.length; }
+  reset(): void { this.cursor = 0; }
   addBreakpoint(operationIndex: number): void { this.assertOperation(operationIndex); this.breakpoints.add(operationIndex); }
   removeBreakpoint(operationIndex: number): void { this.breakpoints.delete(operationIndex); }
+  toggleBreakpoint(operationIndex: number): boolean { if (this.breakpoints.has(operationIndex)) { this.breakpoints.delete(operationIndex); return false; } else { this.addBreakpoint(operationIndex); return true; } }
+  hasBreakpoint(operationIndex: number): boolean { return this.breakpoints.has(operationIndex); }
   async stepForward(): Promise<DebugSnapshot> { if (this.cursor >= this.program.operations.length) return this.snapshot(); this.cursor++; return this.snapshot(); }
   async stepBack(): Promise<DebugSnapshot> { this.cursor = Math.max(0, this.cursor - 1); return this.snapshot(); }
   async continue(): Promise<DebugSnapshot> { do { if (this.cursor >= this.program.operations.length) break; this.cursor++; } while (!this.breakpoints.has(this.cursor)); return this.snapshot(); }

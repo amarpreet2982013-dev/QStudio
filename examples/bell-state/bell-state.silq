@@ -1,0 +1,6 @@
+fn bell() {
+  let q = new Qubit[2];
+  H(q[0]);
+  X(q[1]).controlled(q[0]);
+  return measure(q);
+}

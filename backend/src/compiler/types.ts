@@ -12,7 +12,7 @@ export interface GateNode extends BaseNode { kind: "Gate"; gate: string; targets
 export interface QubitRef { name: string; index: number; range: Range; }
 export interface ReturnNode extends BaseNode { kind: "Return"; }
 export interface VariableNode extends BaseNode { kind: "Variable"; name: string; }
-export interface SemanticModel { symbols: Map<string, { kind: "function" | "qubit" | "variable"; range: Range; references: Range[] }>; diagnostics: Diagnostic[]; }
+export interface SemanticModel { symbols: Map<string, { kind: "function" | "qubit" | "variable"; size?: number; range: Range; references: Range[] }>; diagnostics: Diagnostic[]; }
 export interface IROperation { opcode: "h" | "x" | "y" | "z" | "s" | "t" | "cx" | "cz" | "swap" | "measure" | "reset"; targets: number[]; controls: number[]; source: Range; }
 export interface QuantumIR { qubits: number; operations: IROperation[]; }
 export interface CompilationResult { tokens: Token[]; ast: ProgramNode; semantic: SemanticModel; ir: QuantumIR; qasm: string; circuit: CircuitModel; diagnostics: Diagnostic[]; }

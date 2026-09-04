@@ -1,15 +1,242 @@
-import { useEffect, useState } from "react";
-import { SilqCompiler } from "../../../backend/src/compiler/SilqCompiler";
+import { useState } from "react";
 import type { CircuitModel } from "../../../backend/src/contracts";
+import { SilqCompiler } from "../../../backend/src/compiler/SilqCompiler";
 import { StateVectorSimulator } from "../../../simulator/StateVectorSimulator";
-import { useIDEStore } from "../store/ideStore";
+import { useIDEStore, type ShotCount } from "../store/ideStore";
 
-const compiler = new SilqCompiler(); const simulator = new StateVectorSimulator(compiler);
+const compiler = new SilqCompiler();
+const simulator = new StateVectorSimulator(compiler);
+
 export function CircuitPanel(): JSX.Element {
-  const { tabs, activeTab, log, setPanel, setSimulationOutput } = useIDEStore(); const source = tabs.find((item) => item.id === activeTab)?.content ?? ""; const [circuit, setCircuit] = useState<CircuitModel>({ name: "No circuit", qubits: 1, operations: [] });
-  useEffect(() => { let active = true; const timer = window.setTimeout(() => { void compiler.generateCircuit(source).then((value) => { if (active) setCircuit(value); }); }, 150); return () => { active = false; window.clearTimeout(timer); }; }, [source]);
-  const run = async () => { try { const result = await simulator.run(source); const report = [`Simulation completed in ${result.elapsedMs}ms`, "", "Probability distribution:", ...Object.entries(result.probabilities).map(([state, value]) => `|${state}⟩  ${(value * 100).toFixed(2)}%`), "", "State vector:", ...result.stateVector, "", "Measurements:", JSON.stringify(result.counts), "", "Bloch vectors:", ...result.registers.map((register) => `q${register.qubit}: (${register.bloch.x.toFixed(3)}, ${register.bloch.y.toFixed(3)}, ${register.bloch.z.toFixed(3)})`)].join("\n"); setSimulationOutput(report); log(`Simulated ${circuit.name}: ${result.shots} shots in ${result.elapsedMs}ms.`); setPanel("simulation"); } catch (error) { log(`Simulation error: ${error instanceof Error ? error.message : String(error)}`); setPanel("problems"); } };
-  return <aside className="circuit"><div className="panel-title">QUANTUM CIRCUIT <button onClick={() => void run()}>▶ Run</button></div><div className="circuit-meta"><span>{circuit.name}</span><span>{circuit.qubits} qubits</span></div><CircuitSvg circuit={circuit} /><div className="legend"><span>● Control</span><span>⊕ X gate</span></div><div className="circuit-presets"><p>Live compiler output</p><button onClick={() => void run()}>Run state-vector simulator</button></div></aside>;
+  const {
+    tabs,
+    activeTab,
+    log,
+    setPanel,
+    setSimulationOutput,
+    shots,
+    setShots,
+    circuitZoom,
+    setCircuitZoom,
+    selectedGateIndex,
+    setSelectedGateIndex,
+    lastValidCircuit,
+    compileStatus,
+  } = useIDEStore();
+
+  const source = tabs.find((item) => item.id === activeTab)?.content ?? "";
+  const [running, setRunning] = useState(false);
+
+  const circuit = lastValidCircuit;
+
+  const runSimulation = async () => {
+    setRunning(true);
+    try {
+      const result = await simulator.run(source, shots);
+      const reportData = {
+        elapsedMs: result.elapsedMs,
+        shots: result.shots,
+        probabilities: result.probabilities,
+        stateVector: result.stateVector,
+        counts: result.counts,
+        registers: result.registers,
+      };
+
+      // Store formatted JSON data so OutputPanel can render sleek charts and tables
+      setSimulationOutput(JSON.stringify(reportData));
+      log(`Simulated ${circuit.name}: ${result.shots} shots in ${result.elapsedMs}ms.`);
+      setPanel("simulation");
+    } catch (error) {
+      log(`Simulation error: ${error instanceof Error ? error.message : String(error)}`);
+      setPanel("problems");
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <aside className="circuit">
+      <div className="panel-title">
+        <span>QUANTUM CIRCUIT</span>
+        <div className="title-actions">
+          <button className="primary-btn" onClick={() => void runSimulation()} disabled={running}>
+            {running ? "Simulating..." : "▶ Run"}
+          </button>
+        </div>
+      </div>
+
+      <div className="circuit-controls-bar">
+        <div className="meta-info">
+          <span className="circuit-name">{circuit.name || "Compiled Circuit"}</span>
+          <span className="pill">{circuit.qubits} Qubit{circuit.qubits > 1 ? "s" : ""}</span>
+          <span className={`pill status-${compileStatus.toLowerCase().replace(/[^a-z]/g, "")}`}>
+            {compileStatus}
+          </span>
+        </div>
+
+        <div className="circuit-toolbar">
+          <label className="shots-selector">
+            Shots:
+            <select
+              value={shots}
+              onChange={(e) => setShots(Number(e.target.value) as ShotCount)}
+              aria-label="Simulation Shot Count"
+            >
+              <option value={100}>100</option>
+              <option value={512}>512</option>
+              <option value={1024}>1024</option>
+              <option value={2048}>2048</option>
+              <option value={4096}>4096</option>
+            </select>
+          </label>
+
+          <div className="zoom-controls">
+            <button onClick={() => setCircuitZoom((z) => Math.max(0.6, z - 0.15))} title="Zoom Out">-</button>
+            <span className="zoom-val">{Math.round(circuitZoom * 100)}%</span>
+            <button onClick={() => setCircuitZoom((z) => Math.min(2.0, z + 0.15))} title="Zoom In">+</button>
+            <button onClick={() => setCircuitZoom(1.0)} title="Reset Zoom">↺</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="circuit-scroll-container">
+        <div style={{ transform: `scale(${circuitZoom})`, transformOrigin: "top left" }}>
+          <CircuitSvg
+            circuit={circuit}
+            selectedIndex={selectedGateIndex}
+            onSelectGate={(idx) => setSelectedGateIndex(idx === selectedGateIndex ? null : idx)}
+          />
+        </div>
+      </div>
+
+      <div className="legend">
+        <span>● Control dot</span>
+        <span>⊕ CNOT target</span>
+        <span>M Measure</span>
+        <span>R Reset</span>
+        <span>SWAP Exchange</span>
+      </div>
+    </aside>
+  );
 }
-function CircuitSvg({ circuit }: { circuit: CircuitModel }): JSX.Element { const width = Math.max(190, 64 + circuit.operations.length * 47), height = Math.max(92, circuit.qubits * 43 + 25); return <div className="circuit-svg-wrap"><svg className="circuit-svg" viewBox={`0 0 ${width} ${height}`} aria-label="Quantum circuit"><g>{Array.from({ length: circuit.qubits }, (_, qubit) => <g key={qubit}><text x="4" y={38 + qubit * 43}>q{qubit}</text><line x1="28" x2={width - 6} y1={32 + qubit * 43} y2={32 + qubit * 43} /></g>)}</g>{circuit.operations.map((operation, index) => <Gate key={`${operation.moment}-${index}`} operation={operation} x={48 + index * 47} />)}</svg></div>; }
-function Gate({ operation, x }: { operation: CircuitModel["operations"][number]; x: number }): JSX.Element { const targets = operation.targets; const primary = targets[targets.length - 1] ?? 0; const y = 32 + primary * 43; const controlled = ["CX", "CZ"].includes(operation.gate) && targets.length > 1; const controlY = controlled ? 32 + targets[0] * 43 : 0; if (operation.gate === "SWAP") return <g><line x1={x} x2={x} y1={32 + targets[0] * 43} y2={32 + targets[1] * 43} className="gate-link" /><text x={x - 6} y={32 + targets[0] * 43 + 5}>×</text><text x={x - 6} y={32 + targets[1] * 43 + 5}>×</text></g>; return <g>{controlled && <><line x1={x} x2={x} y1={controlY} y2={y} className="gate-link" /><circle cx={x} cy={controlY} r="4" className="control" /></>}<rect x={x - 13} y={y - 13} width="26" height="26" rx="2" className="gate" /><text x={x} y={y + 4} textAnchor="middle">{operation.gate === "CX" ? "⊕" : operation.gate === "MEASURE" ? "M" : operation.gate}</text></g>; }
+
+function CircuitSvg({
+  circuit,
+  selectedIndex,
+  onSelectGate,
+}: {
+  circuit: CircuitModel;
+  selectedIndex: number | null;
+  onSelectGate(idx: number): void;
+}): JSX.Element {
+  const wireSpacing = 48;
+  const gateSpacing = 52;
+  const startX = 64;
+  const startY = 36;
+  const width = Math.max(240, startX + circuit.operations.length * gateSpacing + 40);
+  const height = Math.max(100, startY + circuit.qubits * wireSpacing + 20);
+
+  return (
+    <svg className="circuit-svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-label="Quantum Circuit Diagram">
+      <g className="wires">
+        {Array.from({ length: circuit.qubits }, (_, qubit) => {
+          const y = startY + qubit * wireSpacing;
+          return (
+            <g key={`wire-${qubit}`}>
+              <text x="12" y={y + 4} className="qubit-label">
+                q[{qubit}]
+              </text>
+              <line x1="48" x2={width - 20} y1={y} y2={y} className="wire-line" />
+            </g>
+          );
+        })}
+      </g>
+
+      <g className="operations">
+        {circuit.operations.map((operation: CircuitModel["operations"][number], index: number) => {
+          const x = startX + index * gateSpacing;
+          const isSelected = selectedIndex === index;
+          return (
+            <GateItem
+              key={`op-${operation.moment}-${index}`}
+              operation={operation}
+              x={x}
+              startY={startY}
+              wireSpacing={wireSpacing}
+              isSelected={isSelected}
+              onClick={() => onSelectGate(index)}
+            />
+          );
+        })}
+      </g>
+    </svg>
+  );
+}
+
+function GateItem({
+  operation,
+  x,
+  startY,
+  wireSpacing,
+  isSelected,
+  onClick,
+}: {
+  operation: CircuitModel["operations"][number];
+  x: number;
+  startY: number;
+  wireSpacing: number;
+  isSelected: boolean;
+  onClick(): void;
+}): JSX.Element {
+  const gateName = operation.gate.toUpperCase();
+  const targets = operation.targets;
+
+  if (gateName === "SWAP" && targets.length >= 2) {
+    const y1 = startY + targets[0] * wireSpacing;
+    const y2 = startY + targets[1] * wireSpacing;
+    return (
+      <g className={`gate-group ${isSelected ? "selected" : ""}`} onClick={onClick} style={{ cursor: "pointer" }}>
+        <line x1={x} x2={x} y1={y1} y2={y2} className="gate-link-line" />
+        <g transform={`translate(${x}, ${y1})`}>
+          <line x1="-6" y1="-6" x2="6" y2="6" className="swap-x" />
+          <line x1="-6" y1="6" x2="6" y2="-6" className="swap-x" />
+        </g>
+        <g transform={`translate(${x}, ${y2})`}>
+          <line x1="-6" y1="-6" x2="6" y2="6" className="swap-x" />
+          <line x1="-6" y1="6" x2="6" y2="-6" className="swap-x" />
+        </g>
+      </g>
+    );
+  }
+
+  const primaryTarget = targets[targets.length - 1] ?? 0;
+  const targetY = startY + primaryTarget * wireSpacing;
+  const hasControl = (gateName === "CX" || gateName === "CZ" || gateName === "CNOT") && targets.length > 1;
+  const controlY = hasControl ? startY + targets[0] * wireSpacing : targetY;
+
+  return (
+    <g className={`gate-group ${isSelected ? "selected" : ""}`} onClick={onClick} style={{ cursor: "pointer" }}>
+      {hasControl && (
+        <>
+          <line x1={x} x2={x} y1={controlY} y2={targetY} className="gate-link-line" />
+          <circle cx={x} cy={controlY} r="5" className="control-dot" />
+        </>
+      )}
+
+      {gateName === "CX" || gateName === "CNOT" ? (
+        <g transform={`translate(${x}, ${targetY})`}>
+          <circle cx="0" cy="0" r="12" className="target-circle" />
+          <line x1="-8" y1="0" x2="8" y2="0" className="target-cross" />
+          <line x1="0" y1="-8" x2="0" y2="8" className="target-cross" />
+        </g>
+      ) : (
+        <g transform={`translate(${x}, ${targetY})`}>
+          <rect x="-15" y="-15" width="30" height="30" rx="4" className={`gate-box ${isSelected ? "gate-box-active" : ""}`} />
+          <text x="0" y="4" textAnchor="middle" className="gate-text">
+            {gateName === "MEASURE" ? "M" : gateName === "RESET" ? "R" : gateName}
+          </text>
+        </g>
+      )}
+    </g>
+  );
+}
