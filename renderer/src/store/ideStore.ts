@@ -1,7 +1,16 @@
 import { create } from "zustand";
 import type { CircuitModel, Diagnostic } from "../../../backend/src/contracts";
+import { defaultLanguageRegistry } from "../../../backend/src/languages";
 
-export interface EditorTab { id: string; title: string; path?: string; content: string; dirty?: boolean; }
+export interface EditorTab {
+  id: string;
+  title: string;
+  path?: string;
+  content: string;
+  language?: string;
+  dirty?: boolean;
+}
+
 export type ShotCount = 100 | 512 | 1024 | 2048 | 4096;
 export type CompileStatus = "Ready" | "Compiling..." | "Compiled" | "Error";
 
@@ -25,6 +34,7 @@ interface IDEState {
   setTheme(): void;
   openTab(tab: EditorTab): void;
   updateTab(id: string, content: string): void;
+  setTabLanguage(id: string, language: string): void;
   closeTab(id: string): void;
   setProject(root: string, files: FileNode[]): void;
   setPanel(panel: IDEState["panel"]): void;
@@ -40,17 +50,31 @@ interface IDEState {
   setLastValidCircuit(circuit: CircuitModel): void;
 }
 
-export const starterCode = `// A Bell-state program in Silq\nfn bell() {\n  let q = new Qubit[2];\n  H(q[0]);\n  X(q[1]).controlled(q[0]);\n  return measure(q);\n}\n`;
+export const starterCode = `// A Bell-state program in Silq
+fn bell() {
+  let q = new Qubit[2];
+  H(q[0]);
+  X(q[1]).controlled(q[0]);
+  return measure(q);
+}
+`;
 
-const defaultCircuit: CircuitModel = { name: "Bell State", qubits: 2, operations: [{ gate: "H", targets: [0], moment: 0 }, { gate: "CX", targets: [0, 1], moment: 1 }] };
+const defaultCircuit: CircuitModel = {
+  name: "Bell State",
+  qubits: 2,
+  operations: [
+    { gate: "H", targets: [0], moment: 0 },
+    { gate: "CX", targets: [0, 1], moment: 1 },
+  ],
+};
 
 export const useIDEStore = create<IDEState>((set) => ({
   theme: "dark",
-  tabs: [{ id: "welcome", title: "Welcome", content: starterCode }],
+  tabs: [{ id: "welcome", title: "Welcome", content: starterCode, language: "silq" }],
   activeTab: "welcome",
   files: [],
   panel: "console",
-  console: ["Silq Studio ready."],
+  console: ["QStudio Quantum IDE ready."],
   simulationOutput: "Run a circuit to inspect state-vector results.",
   compileStatus: "Ready",
   diagnostics: [],
@@ -60,9 +84,40 @@ export const useIDEStore = create<IDEState>((set) => ({
   selectedDiagnostic: null,
   lastValidCircuit: defaultCircuit,
   setTheme: () => set((state) => ({ theme: state.theme === "dark" ? "light" : "dark" })),
-  openTab: (tab) => set((state) => ({ tabs: state.tabs.some((item) => item.id === tab.id) ? state.tabs : [...state.tabs, tab], activeTab: tab.id })),
-  updateTab: (id, content) => set((state) => ({ tabs: state.tabs.map((tab) => tab.id === id ? { ...tab, content, dirty: true } : tab) })),
-  closeTab: (id) => set((state) => ({ tabs: state.tabs.filter((tab) => tab.id !== id), activeTab: state.activeTab === id ? state.tabs.find((tab) => tab.id !== id)?.id : state.activeTab })),
+  openTab: (tab) =>
+    set((state) => {
+      const language = tab.language ?? defaultLanguageRegistry.detect(tab.path ?? tab.title, tab.content).id;
+      const normalizedTab = { ...tab, language };
+      return {
+        tabs: state.tabs.some((item) => item.id === tab.id)
+          ? state.tabs.map((item) => (item.id === tab.id ? { ...item, ...normalizedTab } : item))
+          : [...state.tabs, normalizedTab],
+        activeTab: tab.id,
+      };
+    }),
+  updateTab: (id, content) =>
+    set((state) => ({
+      tabs: state.tabs.map((tab) =>
+        tab.id === id
+          ? {
+              ...tab,
+              content,
+              dirty: true,
+              // If language is not manually forced, allow auto detection on header change
+              language: tab.language ?? defaultLanguageRegistry.detect(tab.path ?? tab.title, content).id,
+            }
+          : tab
+      ),
+    })),
+  setTabLanguage: (id, language) =>
+    set((state) => ({
+      tabs: state.tabs.map((tab) => (tab.id === id ? { ...tab, language } : tab)),
+    })),
+  closeTab: (id) =>
+    set((state) => ({
+      tabs: state.tabs.filter((tab) => tab.id !== id),
+      activeTab: state.activeTab === id ? state.tabs.find((tab) => tab.id !== id)?.id : state.activeTab,
+    })),
   setProject: (projectRoot, files) => set({ projectRoot, files }),
   setPanel: (panel) => set({ panel }),
   setSimulationOutput: (simulationOutput) => set({ simulationOutput }),

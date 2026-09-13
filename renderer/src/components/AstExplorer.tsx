@@ -1,27 +1,32 @@
 import { useEffect, useState } from "react";
-import { SilqCompiler } from "../../../backend/src/compiler/SilqCompiler";
 import type { ProgramNode, QubitRef, StatementNode } from "../../../backend/src/compiler/types";
 import { useIDEStore } from "../store/ideStore";
-
-const compiler = new SilqCompiler();
+import { defaultLanguageRegistry } from "../../../backend/src/languages";
 
 export function AstExplorer(): JSX.Element {
-  const source = useIDEStore((state) => state.tabs.find((tab) => tab.id === state.activeTab)?.content ?? "");
+  const tab = useIDEStore((state) => state.tabs.find((item) => item.id === state.activeTab));
+  const source = tab?.content ?? "";
   const selectAst = useIDEStore((state) => state.selectAst);
   const [ast, setAst] = useState<ProgramNode>();
+
+  const adapter = tab
+    ? tab.language
+      ? defaultLanguageRegistry.get(tab.language) ?? defaultLanguageRegistry.detect(tab.path ?? tab.title, source)
+      : defaultLanguageRegistry.detect(tab.path ?? tab.title, source)
+    : defaultLanguageRegistry.get("silq")!;
 
   useEffect(() => {
     let active = true;
     const timer = window.setTimeout(() => {
-      void compiler.parse(source).then((result: ProgramNode) => {
-        if (active) setAst(result);
+      void adapter.compile(source).then((result) => {
+        if (active) setAst(result.ast);
       });
     }, 180);
     return () => {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [source]);
+  }, [source, adapter]);
 
   return (
     <section className="ast">

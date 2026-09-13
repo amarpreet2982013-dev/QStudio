@@ -2,11 +2,9 @@ import Editor, { type OnMount } from "@monaco-editor/react";
 import type * as Monaco from "monaco-editor";
 import { useEffect, useRef } from "react";
 import { useIDEStore } from "../store/ideStore";
-import { registerSilqLanguage, updateSilqDiagnostics } from "../language/SilqLanguageService";
-import { SilqCompiler } from "../../../backend/src/compiler/SilqCompiler";
+import { registerAllQuantumLanguages, updateQuantumDiagnostics } from "../language/QuantumMonacoService";
+import { defaultLanguageRegistry } from "../../../backend/src/languages";
 import { EXAMPLES } from "../examples/examplePrograms";
-
-const compiler = new SilqCompiler();
 
 export function EditorPane(): JSX.Element {
   const {
@@ -14,6 +12,7 @@ export function EditorPane(): JSX.Element {
     activeTab,
     theme,
     updateTab,
+    setTabLanguage,
     astSelection,
     selectedDiagnostic,
     setCompileStatus,
@@ -25,9 +24,20 @@ export function EditorPane(): JSX.Element {
   const tab = tabs.find((item) => item.id === activeTab);
   const source = tab?.content ?? "";
 
+  const adapter = tab
+    ? tab.language
+      ? defaultLanguageRegistry.get(tab.language) ?? defaultLanguageRegistry.detect(tab.path ?? tab.title, source)
+      : defaultLanguageRegistry.detect(tab.path ?? tab.title, source)
+    : defaultLanguageRegistry.get("silq")!;
+
   const onMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
-    configureSilq(monaco, editor);
+    (window as unknown as { monaco: typeof Monaco }).monaco = monaco;
+    registerAllQuantumLanguages(monaco);
+    const model = editor.getModel();
+    if (model) {
+      void updateQuantumDiagnostics(monaco, model, adapter);
+    }
   };
 
   // Debounced compilation pipeline
@@ -37,13 +47,13 @@ export function EditorPane(): JSX.Element {
     setCompileStatus("Compiling...");
     const timer = window.setTimeout(async () => {
       try {
-        const result = await compiler.analyze(source);
+        const result = await adapter.compile(source);
         setDiagnostics(result.diagnostics);
 
         if (editorRef.current) {
           const model = editorRef.current.getModel();
           if (model && (window as unknown as { monaco?: typeof Monaco }).monaco) {
-            void updateSilqDiagnostics((window as unknown as { monaco: typeof Monaco }).monaco, model);
+            void updateQuantumDiagnostics((window as unknown as { monaco: typeof Monaco }).monaco, model, adapter);
           }
         }
 
@@ -53,13 +63,13 @@ export function EditorPane(): JSX.Element {
         } else {
           setCompileStatus("Error");
         }
-      } catch (err) {
+      } catch {
         setCompileStatus("Error");
       }
     }, 200);
 
     return () => window.clearTimeout(timer);
-  }, [source, tab, setCompileStatus, setDiagnostics, setLastValidCircuit]);
+  }, [source, tab, adapter, setCompileStatus, setDiagnostics, setLastValidCircuit]);
 
   // Jump to AST selection
   useEffect(() => {
@@ -86,7 +96,7 @@ export function EditorPane(): JSX.Element {
     const line = selectedDiagnostic.line;
     const col = selectedDiagnostic.column;
     const endLine = selectedDiagnostic.endLine ?? line;
-    const endCol = selectedDiagnostic.endColumn ?? (col + 1);
+    const endCol = selectedDiagnostic.endColumn ?? col + 1;
 
     editor.setSelection({
       startLineNumber: line,
@@ -100,29 +110,72 @@ export function EditorPane(): JSX.Element {
 
   if (tab?.id === "welcome") return <Welcome />;
 
+  const supportedLanguages = defaultLanguageRegistry.list();
+
   return (
-    <div className="editor">
-      {tab ? (
-        <Editor
-          height="100%"
-          language="silq"
-          theme={theme === "dark" ? "silq-dark" : "silq-light"}
-          value={tab.content}
-          onChange={(value) => updateTab(tab.id, value ?? "")}
-          onMount={onMount}
-          options={{
-            minimap: { enabled: true },
-            fontSize: 14,
-            tabSize: 2,
-            automaticLayout: true,
-            padding: { top: 16 },
-            scrollBeyondLastLine: false,
-            bracketPairColorization: { enabled: true },
+    <div className="editor" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {tab && (
+        <div
+          className="editor-header-bar"
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "4px 12px",
+            background: theme === "dark" ? "#141822" : "#f1f5f9",
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+            fontSize: "12px",
           }}
-        />
-      ) : (
-        <div className="empty">Open a file to begin.</div>
+        >
+          <span style={{ opacity: 0.8 }}>{tab.title}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <label style={{ opacity: 0.7 }}>Language:</label>
+            <select
+              value={adapter.id}
+              onChange={(e) => setTabLanguage(tab.id, e.target.value)}
+              style={{
+                background: theme === "dark" ? "#1e2433" : "#ffffff",
+                color: "inherit",
+                border: "1px solid rgba(255,255,255,0.15)",
+                borderRadius: "4px",
+                padding: "2px 6px",
+                fontSize: "12px",
+              }}
+              aria-label="Quantum Language Selector"
+            >
+              {supportedLanguages.map((lang) => (
+                <option key={lang.id} value={lang.id}>
+                  {lang.name} ({lang.extensions.join(", ")})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
       )}
+
+      <div style={{ flex: 1, minHeight: 0 }}>
+        {tab ? (
+          <Editor
+            height="100%"
+            language={adapter.monacoLanguageId}
+            theme={theme === "dark" ? "silq-dark" : "silq-light"}
+            value={tab.content}
+            onChange={(value) => updateTab(tab.id, value ?? "")}
+            onMount={onMount}
+            options={{
+              minimap: { enabled: true },
+              fontSize: 14,
+              tabSize: 2,
+              automaticLayout: true,
+              padding: { top: 12 },
+              scrollBeyondLastLine: false,
+              bracketPairColorization: { enabled: true },
+            }}
+          />
+        ) : (
+          <div className="empty">Open a file to begin.</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -137,28 +190,77 @@ function Welcome(): JSX.Element {
     log(`Opened workspace: ${root}`);
   };
 
-  const createNew = () =>
+  const createNew = (langId = "silq") => {
+    const adapter = defaultLanguageRegistry.get(langId) ?? defaultLanguageRegistry.get("silq")!;
+    const ext = adapter.extensions[0] ?? ".silq";
+    const example = adapter.examplePrograms?.[0];
     openTab({
-      id: "untitled.silq",
-      title: "untitled.silq",
-      content: `fn main() {\n  let q = new Qubit[2];\n  H(q[0]);\n  X(q[1]).controlled(q[0]);\n  return measure(q);\n}`,
+      id: `untitled${ext}`,
+      title: `untitled${ext}`,
+      language: adapter.id,
+      content:
+        example?.code ??
+        `// A Bell-state program in ${adapter.name}\nfn bell() {\n  let q = new Qubit[2];\n  H(q[0]);\n  X(q[1]).controlled(q[0]);\n  return measure(q);\n}`,
     });
+  };
 
-  const loadExample = (title: string, code: string) => {
+  const loadExample = (title: string, code: string, langId = "silq") => {
+    const adapter = defaultLanguageRegistry.get(langId) ?? defaultLanguageRegistry.detect(undefined, code);
+    const ext = adapter.extensions[0] ?? ".silq";
     openTab({
-      id: `example-${title.toLowerCase().replace(/\s+/g, "-")}.silq`,
-      title: `${title}.silq`,
+      id: `example-${title.toLowerCase().replace(/\s+/g, "-")}${ext}`,
+      title: `${title}${ext}`,
+      language: adapter.id,
       content: code,
     });
   };
+
+  // Multi-language Bell State Examples
+  const bellExamples = [
+    {
+      id: "bell-silq",
+      name: "Bell State (Silq)",
+      lang: "silq",
+      desc: "Silq quantum function with controlled-X gate",
+      code: `fn bell() {\n  let q = new Qubit[2];\n  H(q[0]);\n  X(q[1]).controlled(q[0]);\n  return measure(q);\n}`,
+    },
+    {
+      id: "bell-qasm3",
+      name: "Bell State (OpenQASM 3.0)",
+      lang: "openqasm3",
+      desc: "OpenQASM 3.0 syntax with stdgates.inc and measure statement",
+      code: `OPENQASM 3.0;\ninclude "stdgates.inc";\n\nqubit[2] q;\nbit[2] c;\n\nh q[0];\ncx q[0], q[1];\n\nmeasure q[0] -> c[0];\nmeasure q[1] -> c[1];\n`,
+    },
+    {
+      id: "bell-qsharp",
+      name: "Bell State (Microsoft Q#)",
+      lang: "qsharp",
+      desc: "Q# operation with use qubit allocation and ResetAll",
+      code: `namespace QStudio.Examples {\n    open Microsoft.Quantum.Intrinsic;\n\n    operation BellState() : Result[] {\n        use q = Qubit[2];\n\n        H(q[0]);\n        CNOT(q[0], q[1]);\n\n        let results = [M(q[0]), M(q[1])];\n\n        ResetAll(q);\n        return results;\n    }\n}\n`,
+    },
+    {
+      id: "bell-quil",
+      name: "Bell State (Quil)",
+      lang: "quil",
+      desc: "Rigetti Quil syntax with DECLARE and integer qubit indexing",
+      code: `DECLARE ro BIT[2]\n\nH 0\nCNOT 0 1\n\nMEASURE 0 ro[0]\nMEASURE 1 ro[1]\n`,
+    },
+    {
+      id: "bell-qasm2",
+      name: "Bell State (OpenQASM 2.0)",
+      lang: "openqasm2",
+      desc: "OpenQASM 2.0 syntax with qreg and creg declarations",
+      code: `OPENQASM 2.0;\ninclude "qelib1.inc";\n\nqreg q[2];\ncreg c[2];\n\nh q[0];\ncx q[0],q[1];\n\nmeasure q[0] -> c[0];\nmeasure q[1] -> c[1];\n`,
+    },
+  ];
 
   return (
     <section className="welcome">
       <div className="welcome-header">
         <div className="welcome-mark">◇</div>
-        <h1>Silq Studio</h1>
+        <h1>QStudio</h1>
         <p className="welcome-tagline">
-          Quantum development environment for writing, visualizing, simulating, and debugging quantum programs.
+          Quantum development environment supporting Silq, OpenQASM 3.0, Microsoft Q#, Quil, and OpenQASM 2.0 with unified simulation and visualization.
         </p>
       </div>
 
@@ -166,33 +268,60 @@ function Welcome(): JSX.Element {
         <div className="welcome-card">
           <h3>Quick Start</h3>
           <div className="welcome-actions">
-            <button className="primary" onClick={createNew}>
-              New Project
+            <button className="primary" onClick={() => createNew("silq")}>
+              New Project (.silq)
             </button>
-            <button onClick={open}>Open Project</button>
-            <button onClick={() => window.open("https://docs.silq-lang.org")}>Documentation</button>
+            <button onClick={() => createNew("openqasm3")}>New OpenQASM 3</button>
+            <button onClick={() => createNew("qsharp")}>New Q#</button>
+            <button onClick={() => createNew("quil")}>New Quil</button>
+            <button onClick={open}>Open Folder</button>
           </div>
         </div>
 
         <div className="welcome-card">
           <h3>Environment Status</h3>
           <div className="status-pills">
-            <span className="pill">Compiler: <strong>{compileStatus}</strong></span>
-            <span className="pill">Simulator: <strong>State-Vector (1–12 Qubits)</strong></span>
-            <span className="pill">Debugger: <strong>Quantum IR Step Debugger</strong></span>
+            <span className="pill">
+              Compiler: <strong>{compileStatus}</strong>
+            </span>
+            <span className="pill">
+              Simulator: <strong>State-Vector (1–12 Qubits)</strong>
+            </span>
+            <span className="pill">
+              Languages: <strong>5 Quantum Languages</strong>
+            </span>
+            <span className="pill">
+              Debugger: <strong>Quantum IR Step Debugger</strong>
+            </span>
           </div>
         </div>
       </div>
 
       <div className="welcome-card examples-card">
-        <h3>Built-in Quantum Examples</h3>
+        <h3>Multi-Language Bell State Benchmarks</h3>
+        <p className="muted">Run the canonical Bell state in any supported quantum language:</p>
+        <div className="examples-grid" style={{ marginBottom: "20px" }}>
+          {bellExamples.map((ex) => (
+            <button
+              key={ex.id}
+              className="example-btn"
+              onClick={() => loadExample(ex.name, ex.code, ex.lang)}
+              title={ex.desc}
+            >
+              <span className="ex-title">{ex.name}</span>
+              <span className="ex-desc">{ex.desc}</span>
+            </button>
+          ))}
+        </div>
+
+        <h3>Silq Quantum Examples</h3>
         <p className="muted">Click any example to load it directly into the editor:</p>
         <div className="examples-grid">
           {EXAMPLES.map((ex) => (
             <button
               key={ex.id}
               className="example-btn"
-              onClick={() => loadExample(ex.name, ex.code)}
+              onClick={() => loadExample(ex.name, ex.code, "silq")}
               title={ex.description}
             >
               <span className="ex-title">{ex.name}</span>
@@ -203,20 +332,4 @@ function Welcome(): JSX.Element {
       </div>
     </section>
   );
-}
-
-function configureSilq(monaco: typeof Monaco, editor: Monaco.editor.IStandaloneCodeEditor): void {
-  (window as unknown as { monaco: typeof Monaco }).monaco = monaco;
-  registerSilqLanguage(monaco);
-  void updateSilqDiagnostics(monaco, editor.getModel()!);
-  editor.onDidChangeModelContent(() => {
-    const model = editor.getModel();
-    if (model) void updateSilqDiagnostics(monaco, model);
-  });
-  editor.addAction({
-    id: "silq.run",
-    label: "Run Silq Simulation",
-    keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
-    run: () => editor.focus(),
-  });
 }

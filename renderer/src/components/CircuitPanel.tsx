@@ -1,11 +1,10 @@
 import { useState } from "react";
 import type { CircuitModel } from "../../../backend/src/contracts";
-import { SilqCompiler } from "../../../backend/src/compiler/SilqCompiler";
 import { StateVectorSimulator } from "../../../simulator/StateVectorSimulator";
 import { useIDEStore, type ShotCount } from "../store/ideStore";
+import { defaultLanguageRegistry } from "../../../backend/src/languages";
 
-const compiler = new SilqCompiler();
-const simulator = new StateVectorSimulator(compiler);
+const simulator = new StateVectorSimulator();
 
 export function CircuitPanel(): JSX.Element {
   const {
@@ -24,7 +23,14 @@ export function CircuitPanel(): JSX.Element {
     compileStatus,
   } = useIDEStore();
 
-  const source = tabs.find((item) => item.id === activeTab)?.content ?? "";
+  const tab = tabs.find((item) => item.id === activeTab);
+  const source = tab?.content ?? "";
+  const adapter = tab
+    ? tab.language
+      ? defaultLanguageRegistry.get(tab.language) ?? defaultLanguageRegistry.detect(tab.path ?? tab.title, source)
+      : defaultLanguageRegistry.detect(tab.path ?? tab.title, source)
+    : defaultLanguageRegistry.get("silq")!;
+
   const [running, setRunning] = useState(false);
 
   const circuit = lastValidCircuit;
@@ -32,7 +38,7 @@ export function CircuitPanel(): JSX.Element {
   const runSimulation = async () => {
     setRunning(true);
     try {
-      const result = await simulator.run(source, shots);
+      const result = await simulator.run(source, shots, adapter.id);
       const reportData = {
         elapsedMs: result.elapsedMs,
         shots: result.shots,

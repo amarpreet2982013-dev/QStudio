@@ -1,15 +1,82 @@
-# Compiler Guide
+# Compiler & Language Guide
 
-The QStudio Silq compiler accepts function declarations, quantum-register declarations (`let q = new Qubit[N];`), and quantum gate operations (`H`, `X`, `Y`, `Z`, `S`, `T`, `CNOT`, `CZ`, `SWAP`, `measure`, and `reset`).
+QStudio provides a modular compiler architecture supporting 5 quantum languages: **Silq**, **OpenQASM 3.0**, **Microsoft Q#**, **Quil**, and **OpenQASM 2.0**.
 
-Controlled gate syntax is supported via `.controlled(control)` (e.g. `X(q[1]).controlled(q[0])`).
+> [!NOTE]
+> QStudio implements clearly documented subsets of each quantum language for local circuit compilation, state-vector simulation, SVG visualization, and quantum debugging. It does not claim 100% full specification compliance with third-party language runtimes.
 
-## Pipeline & Diagnostics
+---
 
-1. **Lexer**: Tokenizes source into typed tokens (`keyword`, `identifier`, `number`, `symbol`, `comment`) with start/end character offsets, line numbers, and column numbers.
-2. **Parser**: Parses tokens into a typed Abstract Syntax Tree (`ProgramNode`, `FunctionNode`, `QubitDeclarationNode`, `GateNode`, `ReturnNode`, `VariableNode`). Emits structured `Diagnostic` objects containing `severity`, `message`, `line`, `column`, `endLine`, `endColumn`, and `range`.
-3. **Semantic Analyzer**: Validates register names, symbol references, qubit range limits (1–12 qubits), register sizes, and target/control index bounds.
-4. **IR Generator**: Lowers AST to `QuantumIR` containing linear operations and qubit counts.
-5. **Generators**: Emits OpenQASM 3 format string (`OpenQasmGenerator`) and SVG-compatible circuit model (`CircuitGenerator`).
+## 1. Supported Quantum Languages
 
-`SilqCompiler.analyze(source)` executes the complete compilation pipeline asynchronously and returns `CompilationResult`.
+### A. Silq (Original QStudio Language)
+- **Extensions**: `.silq`
+- **Supported Subset**:
+  - Function declarations: `fn name() { ... }`
+  - Qubit declarations: `let q = new Qubit[N];`
+  - Variable assignments: `let x = ...;`
+  - Gate operations: `H`, `X`, `Y`, `Z`, `S`, `T`, `CNOT`, `CZ`, `SWAP`
+  - Controlled gate modifiers: `.controlled(control)` (e.g. `X(q[1]).controlled(q[0]);`)
+  - Measurement & Reset: `measure(q[0])`, `measure(q)`, `reset(q[0])`
+  - Return statements: `return measure(q);`
+  - Line comments: `// ...`
+
+### B. OpenQASM 3.0
+- **Extensions**: `.qasm`, `.qasm3`
+- **Supported Subset**:
+  - Header: `OPENQASM 3.0;` or `OPENQASM 3;`
+  - Includes: `include "stdgates.inc";`
+  - Declarations: `qubit[N] q;`, `qubit q;`, `bit[N] c;`, `bit c;`
+  - Gates: `h`, `x`, `y`, `z`, `s`, `t`, `cx`, `cnot`, `cz`, `swap`
+  - Measurement: `measure q[0] -> c[0];`, `c[0] = measure q[0];`
+  - Reset: `reset q[0];`
+  - Barrier: `barrier q[0], q[1];`
+  - Comments: `// ...`, `/* ... */`
+- **Unsupported Features**: Arbitrary classical branching, subroutines, arbitrary angles/phases outside standard gates.
+
+### C. Microsoft Q#
+- **Extensions**: `.qs`
+- **Supported Subset**:
+  - Namespace & Open declarations: `namespace N { open Microsoft.Quantum.Intrinsic; ... }`
+  - Operations: `operation Name(...) : Result[] { ... }`, `operation Name(...) : Unit { ... }`
+  - Qubit allocation: `use q = Qubit[N];`, `use (q0, q1) = (Qubit(), Qubit());`
+  - Gates: `H(q[0]);`, `X(q[0]);`, `Y(q[0]);`, `Z(q[0]);`, `S(q[0]);`, `T(q[0]);`, `CNOT(q[0], q[1]);`, `CZ(q[0], q[1]);`, `SWAP(q[0], q[1]);`
+  - Measurements: `M(q[0])`, `let results = [M(q[0]), M(q[1])];`
+  - Resets: `Reset(q[0]);`, `ResetAll(q);`
+  - Return statements: `return results;`
+  - Comments: `// ...`
+- **Unsupported Features**: Advanced types, functors (`Adjoint`/`Controlled` on custom ops), loops, Q# project references.
+
+### D. Quil (Rigetti)
+- **Extensions**: `.quil`
+- **Supported Subset**:
+  - Declarations: `DECLARE ro BIT[N]`, `DECLARE memory REAL[N]`
+  - Gates: `H <q>`, `X <q>`, `Y <q>`, `Z <q>`, `S <q>`, `T <q>`, `CNOT <q1> <q2>`, `CZ <q1> <q2>`, `SWAP <q1> <q2>`
+  - Instructions: `MEASURE <q> ro[i]`, `MEASURE <q>`, `RESET <q>`, `RESET`
+  - Comments: `# ...`
+- **Unsupported Features**: Defgate expressions, classical logic gates (`AND`, `OR`), memory deflection modifiers.
+
+### E. OpenQASM 2.0
+- **Extensions**: `.qasm`, `.qasm2`
+- **Supported Subset**:
+  - Header: `OPENQASM 2.0;`
+  - Includes: `include "qelib1.inc";`
+  - Declarations: `qreg q[N];`, `creg c[N];`
+  - Gates: `h`, `x`, `y`, `z`, `s`, `t`, `cx`, `cz`, `swap`
+  - Measurement: `measure q[i] -> c[i];`
+  - Reset: `reset q[i];`
+  - Barrier: `barrier q;`
+  - Comments: `// ...`
+- **Unsupported Features**: User-defined gate macros (`gate`), opaque gates.
+
+---
+
+## 2. Compilation Pipeline & Common Quantum IR
+
+Every language adapter produces a unified `CompilationResult`:
+1. **Lexer / Tokenizer**: Creates tokens with accurate 1-indexed lines and columns.
+2. **Parser**: Generates typed AST (`ProgramNode`).
+3. **Semantic Analyzer**: Validates register sizes, total qubit allocations (1–12 qubits for local state-vector simulation), and index bounds.
+4. **IR Lowering**: Generates `QuantumIR` containing linear `IROperation` entries with targets, controls, and source code ranges.
+5. **Circuit Model**: Emits SVG-renderable `CircuitModel`.
+6. **Diagnostics**: Returns structured `Diagnostic` items for pinpoint error reporting in Monaco.

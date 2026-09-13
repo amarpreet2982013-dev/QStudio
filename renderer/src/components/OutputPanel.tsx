@@ -1,10 +1,8 @@
 import { useState, useEffect } from "react";
 import { useIDEStore } from "../store/ideStore";
-import type { Diagnostic } from "../../../backend/src/contracts";
-import { SilqCompiler } from "../../../backend/src/compiler/SilqCompiler";
 import type { CompilationResult } from "../../../backend/src/compiler/types";
 import { QuantumDebugger, type DebugSnapshot } from "../../../simulator/QuantumDebugger";
-import type { StateVectorResult } from "../../../simulator/StateVectorSimulator";
+import { defaultLanguageRegistry } from "../../../backend/src/languages";
 
 const labels = [
   ["console", "Console"],
@@ -13,8 +11,6 @@ const labels = [
   ["debugger", "Quantum Debugger"],
   ["terminal", "Terminal"],
 ] as const;
-
-const compiler = new SilqCompiler();
 
 export function OutputPanel(): JSX.Element {
   const {
@@ -30,7 +26,14 @@ export function OutputPanel(): JSX.Element {
     log,
   } = useIDEStore();
 
-  const source = tabs.find((item) => item.id === activeTab)?.content ?? "";
+  const tab = tabs.find((item) => item.id === activeTab);
+  const source = tab?.content ?? "";
+
+  const adapter = tab
+    ? tab.language
+      ? defaultLanguageRegistry.get(tab.language) ?? defaultLanguageRegistry.detect(tab.path ?? tab.title, source)
+      : defaultLanguageRegistry.detect(tab.path ?? tab.title, source)
+    : defaultLanguageRegistry.get("silq")!;
 
   // Terminal state
   const [command, setCommand] = useState("git status");
@@ -44,7 +47,7 @@ export function OutputPanel(): JSX.Element {
   // Initialize or update Debugger session when panel or source changes
   useEffect(() => {
     if (panel === "debugger" && source.trim()) {
-      void compiler.analyze(source).then((res: CompilationResult) => {
+      void adapter.compile(source).then((res: CompilationResult) => {
         if (res.diagnostics.length > 0) {
           setDebugError("Cannot start debugger with compilation errors.");
           setDebuggerInstance(null);
@@ -57,7 +60,7 @@ export function OutputPanel(): JSX.Element {
         }
       });
     }
-  }, [panel, source]);
+  }, [panel, source, adapter]);
 
   const runTerminal = async () => {
     if (!projectRoot) return setTerminal("Open a workspace before running commands.");
