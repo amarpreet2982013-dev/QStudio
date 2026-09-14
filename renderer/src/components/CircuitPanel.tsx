@@ -121,7 +121,9 @@ export function CircuitPanel(): JSX.Element {
 
       <div className="circuit-controls-bar">
         <div className="meta-info">
-          <span className="circuit-name">{circuit.name || "Compiled Circuit"}</span>
+          <span className="circuit-name" title={compileStatus === "Error" ? "Preserved from the last successful compilation" : undefined}>
+            {compileStatus === "Error" ? `Last successful: ${circuit.name || "Compiled Circuit"}` : circuit.name || "Compiled Circuit"}
+          </span>
           <span className="pill">{circuit.qubits} Qubit{circuit.qubits > 1 ? "s" : ""}</span>
           <span className={`pill status-${compileStatus.toLowerCase().replace(/[^a-z]/g, "")}`}>
             {compileStatus}

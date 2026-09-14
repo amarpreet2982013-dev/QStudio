@@ -20,7 +20,7 @@ export function AstExplorer(): JSX.Element {
     const timer = window.setTimeout(() => {
       void adapter.compile(source).then((result) => {
         if (active) setAst(result.ast);
-      });
+      }).catch(() => undefined);
     }, 180);
     return () => {
       active = false;
