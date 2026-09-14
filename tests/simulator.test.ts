@@ -118,6 +118,14 @@ describe("StateVectorSimulator", () => {
     await expect(simulator.runIR(invalid, 1)).rejects.toThrow("Invalid qubit index 1");
   });
 
+  it("rejects invalid and excessive shot counts", async () => {
+    const ir = { qubits: 1, operations: [] };
+
+    await expect(simulator.runIR(ir, 0)).rejects.toThrow("Shots must be an integer");
+    await expect(simulator.runIR(ir, Number.NaN)).rejects.toThrow("Shots must be an integer");
+    await expect(simulator.runIR(ir, 100_001)).rejects.toThrow("Shots must be an integer");
+  });
+
   it("verifies state vector normalization sum = 1.0", async () => {
     const source = "fn main() { let q = new Qubit[3]; H(q[0]); H(q[1]); H(q[2]); }";
     const result = await simulator.run(source);

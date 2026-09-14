@@ -12,6 +12,16 @@ describe("SilqCompiler", () => {
     expect(result.circuit.operations).toHaveLength(2);
   });
 
+  it("reports an unexpected top-level closing brace instead of hanging", async () => {
+    const result = await new SilqCompiler().analyze("}");
+
+    expect(result.diagnostics.some((diagnostic) => diagnostic.message.includes("Unexpected closing brace"))).toBe(true);
+  });
+
+  it("rejects oversized source before tokenization", async () => {
+    await expect(new SilqCompiler().analyze("x".repeat(1_000_001))).rejects.toThrow("1 MB compilation limit");
+  });
+
   it("parses valid function and qubit declaration", async () => {
     const source = "fn main() { let q = new Qubit[2]; }";
     const result = await compiler.analyze(source);
