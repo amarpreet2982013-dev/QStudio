@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { StateVectorSimulator } from "../simulator/StateVectorSimulator";
 
 describe("StateVectorSimulator", () => {
@@ -97,6 +97,70 @@ describe("StateVectorSimulator", () => {
       const total = Object.values(result.counts).reduce((a, b) => a + b, 0);
       expect(total).toBe(shots);
     });
+
+    it("always measures |0⟩ as zero", async () => {
+      const result = await simulator.run("fn test() { let q = new Qubit[1]; measure(q[0]); }", 100);
+      expect(result.counts).toEqual({ "0": 100 });
+      expect(result.measurements.every((shot) => shot[0] === 0)).toBe(true);
+    });
+
+    it("always measures |1⟩ as one", async () => {
+      const result = await simulator.run("fn test() { let q = new Qubit[1]; X(q[0]); measure(q[0]); }", 100);
+      expect(result.counts).toEqual({ "1": 100 });
+    });
+
+    it("measures |+⟩ with approximately equal outcomes", async () => {
+      const result = await simulator.run("fn test() { let q = new Qubit[1]; H(q[0]); measure(q[0]); }", 2000);
+      expect(result.counts["0"] / result.shots).toBeCloseTo(0.5, 1);
+      expect(result.counts["1"] / result.shots).toBeCloseTo(0.5, 1);
+    });
+
+    it("measures |−⟩ with approximately equal outcomes", async () => {
+      const result = await simulator.run("fn test() { let q = new Qubit[1]; H(q[0]); Z(q[0]); measure(q[0]); }", 2000);
+      expect(result.counts["0"] / result.shots).toBeCloseTo(0.5, 1);
+      expect(result.counts["1"] / result.shots).toBeCloseTo(0.5, 1);
+    });
+
+    it("preserves Bell-state correlations", async () => {
+      const source = "fn bell() { let q = new Qubit[2]; H(q[0]); X(q[1]).controlled(q[0]); measure(q[0]); measure(q[1]); }";
+      const result = await simulator.run(source, 1000);
+      expect(result.counts["01"] ?? 0).toBe(0);
+      expect(result.counts["10"] ?? 0).toBe(0);
+      expect((result.counts["00"] ?? 0) + (result.counts["11"] ?? 0)).toBe(1000);
+    });
+
+    it("uses the collapsed state for later gates", async () => {
+      const random = vi.spyOn(Math, "random").mockReturnValue(0.9);
+      try {
+        const result = await simulator.run("fn test() { let q = new Qubit[1]; H(q[0]); measure(q[0]); X(q[0]); }", 1);
+        expect(result.measurements).toEqual([[0]]);
+        expect(result.probabilities["1"]).toBeCloseTo(1);
+      } finally {
+        random.mockRestore();
+      }
+    });
+
+    it("returns the same result when measuring repeatedly", async () => {
+      const result = await simulator.run("fn test() { let q = new Qubit[1]; H(q[0]); measure(q[0]); measure(q[0]); }", 1000);
+      expect(result.measurements.every(([first, second]) => first === second)).toBe(true);
+    });
+
+    it("measures a nonzero qubit index", async () => {
+      const result = await simulator.run("fn test() { let q = new Qubit[3]; X(q[2]); measure(q[2]); }", 100);
+      expect(result.counts).toEqual({ "1": 100 });
+    });
+
+    it("normalizes the state after collapse", async () => {
+      const result = await simulator.run("fn test() { let q = new Qubit[2]; H(q[0]); measure(q[0]); }", 100);
+      const sum = Object.values(result.probabilities).reduce((total, probability) => total + probability, 0);
+      expect(sum).toBeCloseTo(1);
+    });
+
+    it("records measurements in operation order", async () => {
+      const result = await simulator.run("fn test() { let q = new Qubit[2]; X(q[0]); measure(q[0]); X(q[1]); measure(q[1]); }", 1);
+      expect(result.measurements).toEqual([[1, 1]]);
+      expect(result.counts).toEqual({ "11": 1 });
+    });
   });
 
   describe("Reset", () => {
@@ -104,6 +168,23 @@ describe("StateVectorSimulator", () => {
       const source = "fn test() { let q = new Qubit[1]; X(q[0]); reset(q[0]); }";
       const result = await simulator.run(source, 100);
       expect(result.probabilities["0"]).toBeCloseTo(1.0);
+    });
+
+    it("resets a qubit after measurement", async () => {
+      const result = await simulator.run("fn test() { let q = new Qubit[1]; X(q[0]); measure(q[0]); reset(q[0]); }", 100);
+      expect(result.probabilities["0"]).toBeCloseTo(1);
+      expect(result.measurements.every((shot) => shot[0] === 1)).toBe(true);
+    });
+
+    it("preserves the other qubits when resetting an entangled qubit", async () => {
+      const result = await simulator.run("fn test() { let q = new Qubit[2]; X(q[1]); reset(q[0]); }", 1);
+      expect(result.probabilities["10"]).toBeCloseTo(1);
+    });
+  });
+
+  describe("Validation", () => {
+    it("rejects invalid qubit references with a controlled error", async () => {
+      await expect(simulator.run("fn test() { let q = new Qubit[1]; measure(q[1]); }", 1)).rejects.toThrow("Invalid qubit index 1");
     });
   });
 
