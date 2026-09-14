@@ -14,6 +14,7 @@ import type {
 } from "../../compiler/types";
 import { CircuitGenerator } from "../../compiler/CircuitGenerator";
 import { OpenQasmGenerator } from "../../compiler/OpenQasmGenerator";
+import { assertSourceSize } from "../../compiler/inputLimits";
 
 const QSHARP_KEYWORDS = new Set([
   "namespace",
@@ -182,6 +183,7 @@ export class QSharpParser {
   }
 
   parse(source: string): CompilationResult {
+    assertSourceSize(source);
     const tokens = this.tokenize(source);
     this.cursor = 0;
     this.diagnostics = [];

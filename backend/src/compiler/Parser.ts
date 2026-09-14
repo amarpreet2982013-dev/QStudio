@@ -42,6 +42,8 @@ export class Parser {
       return this.gate(tokens);
     }
     if (current.value === "}") {
+      this.error(current, "Unexpected closing brace.");
+      this.next(tokens);
       return undefined;
     }
 

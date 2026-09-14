@@ -57,8 +57,11 @@ export class StateVectorSimulator implements QuantumSimulator {
   }
 
   async runIR(ir: QuantumIR, shots = 1024): Promise<StateVectorResult> {
-    if (ir.qubits < 1 || ir.qubits > 12) {
+    if (!Number.isInteger(ir.qubits) || ir.qubits < 1 || ir.qubits > 12) {
       throw new Error("State-vector simulation supports 1–12 qubits.");
+    }
+    if (!Number.isInteger(shots) || shots < 1 || shots > 100_000) {
+      throw new Error("Shots must be an integer between 1 and 100000.");
     }
     this.cancelled = false;
     const started = performance.now();
@@ -98,7 +101,7 @@ export class StateVectorSimulator implements QuantumSimulator {
   }
 
   async measure(qubit: number): Promise<0 | 1> {
-    if (qubit < 0 || qubit >= this.qubits) throw new Error("Qubit is outside the active register.");
+    this.assertQubit(qubit);
     const one = this.probabilityOne(qubit);
     const result: 0 | 1 = Math.random() < one ? 1 : 0;
     this.collapse(qubit, result);

@@ -14,6 +14,7 @@ import type {
 } from "../../compiler/types";
 import { CircuitGenerator } from "../../compiler/CircuitGenerator";
 import { OpenQasmGenerator } from "../../compiler/OpenQasmGenerator";
+import { assertSourceSize } from "../../compiler/inputLimits";
 
 const OQ2_KEYWORDS = new Set([
   "OPENQASM",
@@ -152,6 +153,7 @@ export class OpenQasm2Parser {
   }
 
   parse(source: string): CompilationResult {
+    assertSourceSize(source);
     const tokens = this.tokenize(source);
     this.cursor = 0;
     this.diagnostics = [];
