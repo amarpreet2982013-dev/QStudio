@@ -46,8 +46,10 @@ export function OutputPanel(): JSX.Element {
 
   // Initialize or update Debugger session when panel or source changes
   useEffect(() => {
+    let cancelled = false;
     if (panel === "debugger" && source.trim()) {
       void adapter.compile(source).then((res: CompilationResult) => {
+        if (cancelled) return;
         if (res.diagnostics.length > 0) {
           setDebugError("Cannot start debugger with compilation errors.");
           setDebuggerInstance(null);
@@ -56,10 +58,23 @@ export function OutputPanel(): JSX.Element {
           setDebugError(null);
           const dbg = new QuantumDebugger(res.ir);
           setDebuggerInstance(dbg);
-          void dbg.stepForward().then(setCurrentSnapshot);
+          void dbg.stepForward().then((snapshot) => {
+            if (!cancelled) setCurrentSnapshot(snapshot);
+          }).catch((error) => {
+            if (!cancelled) setDebugError(error instanceof Error ? error.message : String(error));
+          });
+        }
+      }).catch((error) => {
+        if (!cancelled) {
+          setDebugError(error instanceof Error ? error.message : String(error));
+          setDebuggerInstance(null);
+          setCurrentSnapshot(null);
         }
       });
     }
+    return () => {
+      cancelled = true;
+    };
   }, [panel, source, adapter]);
 
   const runTerminal = async () => {
@@ -204,6 +219,7 @@ function SimulationView({ rawOutput }: { rawOutput: string }): JSX.Element {
     probabilities: Record<string, number>;
     stateVector: string[];
     counts: Record<string, number>;
+    measurementResults: Array<Array<0 | 1>>;
     registers: Array<{ qubit: number; zero: number; one: number; bloch: { x: number; y: number; z: number } }>;
   } | null = null;
 
@@ -263,6 +279,22 @@ function SimulationView({ rawOutput }: { rawOutput: string }): JSX.Element {
                 </div>
               );
             })}
+          </div>
+        </div>
+
+        <div className="sim-section">
+          <h4>Measurement Results</h4>
+          <div className="counts-list">
+            {data.measurementResults.length === 0 ? (
+              <div className="muted">No measurement operations.</div>
+            ) : (
+              data.measurementResults.slice(0, 20).map((results, index) => (
+                <div key={index} className="count-row">
+                  <span className="state-lbl">Shot {index + 1}</span>
+                  <span className="count-val">{results.length > 0 ? results.join(", ") : "No measurement"}</span>
+                </div>
+              ))
+            )}
           </div>
         </div>
 

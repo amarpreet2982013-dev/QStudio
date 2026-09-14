@@ -5,6 +5,7 @@ import { defaultLanguageRegistry, type LanguageRegistry } from "../backend/src/l
 export interface SimulationResult {
   shots: number;
   counts: Record<string, number>;
+  measurementResults: Array<Array<0 | 1>>;
   stateVector?: string[];
   elapsedMs: number;
 }
@@ -61,18 +62,34 @@ export class StateVectorSimulator implements QuantumSimulator {
     }
     this.cancelled = false;
     const started = performance.now();
-    this.initialize(ir.qubits);
+    const counts: Record<string, number> = {};
+    const measurementResults: Array<Array<0 | 1>> = [];
+    const summedProbabilities: Record<string, number> = {};
 
-    for (const operation of ir.operations) {
-      if (this.cancelled) throw new Error("Simulation stopped.");
-      this.apply(operation);
+    for (let shot = 0; shot < shots; shot++) {
+      this.initialize(ir.qubits);
+      const shotMeasurements: Array<0 | 1> = [];
+      for (const operation of ir.operations) {
+        if (this.cancelled) throw new Error("Simulation stopped.");
+        this.apply(operation, shotMeasurements);
+      }
+
+      const shotProbabilities = this.probabilities();
+      for (const [state, probability] of Object.entries(shotProbabilities)) {
+        summedProbabilities[state] = (summedProbabilities[state] ?? 0) + probability;
+      }
+      const state = this.sampleState(shotProbabilities);
+      counts[state] = (counts[state] ?? 0) + 1;
+      measurementResults.push(shotMeasurements);
     }
 
-    const probabilities = this.probabilities();
-    const counts = this.sample(probabilities, shots);
+    const probabilities = Object.fromEntries(
+      Object.entries(summedProbabilities).map(([state, probability]) => [state, probability / shots])
+    );
     return {
       shots,
       counts,
+      measurementResults,
       probabilities,
       stateVector: this.stateVector(),
       registers: this.registers(),
@@ -100,7 +117,7 @@ export class StateVectorSimulator implements QuantumSimulator {
     this.real[0] = 1;
   }
 
-  private apply(operation: IROperation): void {
+  private apply(operation: IROperation, measurementResults: Array<0 | 1>): void {
     const [a, b] = operation.targets;
     switch (operation.opcode) {
       case "h":
@@ -133,8 +150,13 @@ export class StateVectorSimulator implements QuantumSimulator {
       case "reset":
         this.reset(a);
         break;
-      case "measure":
+      case "measure": {
+        this.assertQubit(a);
+        const result: 0 | 1 = Math.random() < this.probabilityOne(a) ? 1 : 0;
+        this.collapse(a, result);
+        measurementResults.push(result);
         break;
+      }
     }
   }
 
@@ -198,6 +220,7 @@ export class StateVectorSimulator implements QuantumSimulator {
   }
 
   private reset(qubit: number): void {
+    this.assertQubit(qubit);
     const probability = this.probabilityOne(qubit);
     if (probability > 0) {
       this.collapse(qubit, 1);
@@ -236,20 +259,16 @@ export class StateVectorSimulator implements QuantumSimulator {
     return result;
   }
 
-  private sample(probabilities: Record<string, number>, shots: number): Record<string, number> {
+  private sampleState(probabilities: Record<string, number>): string {
     const rows = Object.entries(probabilities);
-    const counts: Record<string, number> = {};
-    for (let shot = 0; shot < shots; shot++) {
-      let cursor = Math.random();
-      for (const [state, probability] of rows) {
-        cursor -= probability;
-        if (cursor <= 0) {
-          counts[state] = (counts[state] ?? 0) + 1;
-          break;
-        }
+    let cursor = Math.random();
+    for (const [state, probability] of rows) {
+      cursor -= probability;
+      if (cursor <= 0) {
+        return state;
       }
     }
-    return counts;
+    return rows[rows.length - 1]?.[0] ?? "0".repeat(this.qubits);
   }
 
   private stateVector(): string[] {

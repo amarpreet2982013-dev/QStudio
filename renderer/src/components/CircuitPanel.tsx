@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CircuitModel } from "../../../backend/src/contracts";
 import { StateVectorSimulator } from "../../../simulator/StateVectorSimulator";
 import { useIDEStore, type ShotCount } from "../store/ideStore";
 import { defaultLanguageRegistry } from "../../../backend/src/languages";
+import { compileAndSimulate } from "../services/RunService";
 
 const simulator = new StateVectorSimulator();
 
@@ -21,6 +22,9 @@ export function CircuitPanel(): JSX.Element {
     setSelectedGateIndex,
     lastValidCircuit,
     compileStatus,
+    setCompileStatus,
+    setDiagnostics,
+    setLastValidCircuit,
   } = useIDEStore();
 
   const tab = tabs.find((item) => item.id === activeTab);
@@ -32,31 +36,75 @@ export function CircuitPanel(): JSX.Element {
     : defaultLanguageRegistry.get("silq")!;
 
   const [running, setRunning] = useState(false);
+  const runId = useRef(0);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      runId.current += 1;
+    };
+  }, []);
 
   const circuit = lastValidCircuit;
 
   const runSimulation = async () => {
+    const currentRun = ++runId.current;
+    const tabId = tab?.id;
+    const inputIsCurrent = () => {
+      const state = useIDEStore.getState();
+      const currentTab = state.tabs.find((item) => item.id === state.activeTab);
+      return mounted.current && currentRun === runId.current && state.shots === shots && currentTab?.id === tabId && currentTab.content === source && currentTab.language === adapter.id;
+    };
+
     setRunning(true);
+    setSimulationOutput("");
+    setCompileStatus("Compiling...");
     try {
-      const result = await simulator.run(source, shots, adapter.id);
+      const runResult = await compileAndSimulate(adapter, source, shots, simulator);
+      if (!inputIsCurrent()) return;
+      setDiagnostics(runResult.compilation.diagnostics);
+      if (!runResult.simulation) {
+        setCompileStatus("Error");
+        log(`Compilation failed with ${runResult.compilation.diagnostics.length} diagnostic(s).`);
+        setPanel("problems");
+        return;
+      }
+
+      const result = runResult.simulation;
+      setCompileStatus("Compiled");
+      setLastValidCircuit(runResult.compilation.circuit);
       const reportData = {
         elapsedMs: result.elapsedMs,
         shots: result.shots,
         probabilities: result.probabilities,
         stateVector: result.stateVector,
         counts: result.counts,
+        measurementResults: result.measurementResults,
         registers: result.registers,
       };
 
       // Store formatted JSON data so OutputPanel can render sleek charts and tables
       setSimulationOutput(JSON.stringify(reportData));
-      log(`Simulated ${circuit.name}: ${result.shots} shots in ${result.elapsedMs}ms.`);
+      log(`Simulated ${runResult.compilation.circuit.name}: ${result.shots} shots in ${result.elapsedMs}ms.`);
       setPanel("simulation");
     } catch (error) {
-      log(`Simulation error: ${error instanceof Error ? error.message : String(error)}`);
-      setPanel("problems");
+      if (inputIsCurrent()) {
+        setDiagnostics([
+          {
+            severity: "error",
+            message: error instanceof Error ? error.message : String(error),
+            line: 1,
+            column: 1,
+          },
+        ]);
+        setCompileStatus("Error");
+        log(`Simulation error: ${error instanceof Error ? error.message : String(error)}`);
+        setPanel("problems");
+      }
     } finally {
-      setRunning(false);
+      if (mounted.current && currentRun === runId.current) setRunning(false);
     }
   };
 
@@ -65,7 +113,7 @@ export function CircuitPanel(): JSX.Element {
       <div className="panel-title">
         <span>QUANTUM CIRCUIT</span>
         <div className="title-actions">
-          <button className="primary-btn" onClick={() => void runSimulation()} disabled={running}>
+          <button className="primary-btn" onClick={() => void runSimulation()} disabled={running || !tab || tab.id === "welcome"}>
             {running ? "Simulating..." : "▶ Run"}
           </button>
         </div>

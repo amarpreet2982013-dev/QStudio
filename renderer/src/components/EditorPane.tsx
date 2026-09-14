@@ -21,6 +21,7 @@ export function EditorPane(): JSX.Element {
   } = useIDEStore();
 
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor>();
+  const compileRequest = useRef(0);
   const tab = tabs.find((item) => item.id === activeTab);
   const source = tab?.content ?? "";
 
@@ -36,24 +37,27 @@ export function EditorPane(): JSX.Element {
     registerAllQuantumLanguages(monaco);
     const model = editor.getModel();
     if (model) {
-      void updateQuantumDiagnostics(monaco, model, adapter);
+      void updateQuantumDiagnostics(monaco, model, adapter).catch(() => undefined);
     }
   };
 
   // Debounced compilation pipeline
   useEffect(() => {
+    const request = ++compileRequest.current;
     if (!tab || tab.id === "welcome") return;
 
+    const isCurrent = () => request === compileRequest.current;
     setCompileStatus("Compiling...");
     const timer = window.setTimeout(async () => {
       try {
         const result = await adapter.compile(source);
+        if (!isCurrent()) return;
         setDiagnostics(result.diagnostics);
 
         if (editorRef.current) {
           const model = editorRef.current.getModel();
           if (model && (window as unknown as { monaco?: typeof Monaco }).monaco) {
-            void updateQuantumDiagnostics((window as unknown as { monaco: typeof Monaco }).monaco, model, adapter);
+            void updateQuantumDiagnostics((window as unknown as { monaco: typeof Monaco }).monaco, model, adapter).catch(() => undefined);
           }
         }
 
@@ -63,12 +67,24 @@ export function EditorPane(): JSX.Element {
         } else {
           setCompileStatus("Error");
         }
-      } catch {
+      } catch (error) {
+        if (!isCurrent()) return;
+        setDiagnostics([
+          {
+            severity: "error",
+            message: error instanceof Error ? error.message : String(error),
+            line: 1,
+            column: 1,
+          },
+        ]);
         setCompileStatus("Error");
       }
     }, 200);
 
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      if (compileRequest.current === request) compileRequest.current += 1;
+    };
   }, [source, tab, adapter, setCompileStatus, setDiagnostics, setLastValidCircuit]);
 
   // Jump to AST selection

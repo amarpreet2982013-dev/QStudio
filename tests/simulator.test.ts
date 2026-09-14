@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { StateVectorSimulator } from "../simulator/StateVectorSimulator";
+import type { QuantumIR } from "../backend/src/compiler/types";
 
 describe("StateVectorSimulator", () => {
   const simulator = new StateVectorSimulator();
@@ -53,6 +54,68 @@ describe("StateVectorSimulator", () => {
     const source = "fn main() { let q = new Qubit[1]; X(q[0]); reset(q[0]); }";
     const result = await simulator.run(source);
     expect(result.probabilities["0"]).toBeCloseTo(1.0);
+  });
+
+  it("records deterministic measurements of |0⟩ and |1⟩", async () => {
+    const zero = await simulator.run("fn main() { let q = new Qubit[1]; measure(q[0]); }", 32);
+    const one = await simulator.run("fn main() { let q = new Qubit[1]; X(q[0]); measure(q[0]); }", 32);
+
+    expect(zero.measurementResults.every(([result]) => result === 0)).toBe(true);
+    expect(one.measurementResults.every(([result]) => result === 1)).toBe(true);
+  });
+
+  it("samples |+⟩ and |−⟩ measurements evenly", async () => {
+    const plus = await simulator.run("fn main() { let q = new Qubit[1]; H(q[0]); measure(q[0]); }", 2000);
+    const minus = await simulator.run("fn main() { let q = new Qubit[1]; H(q[0]); Z(q[0]); measure(q[0]); }", 2000);
+    const fractionOf = (results: Array<Array<0 | 1>>, value: 0 | 1) => results.filter(([result]) => result === value).length / results.length;
+
+    expect(fractionOf(plus.measurementResults, 0)).toBeGreaterThan(0.43);
+    expect(fractionOf(plus.measurementResults, 0)).toBeLessThan(0.57);
+    expect(fractionOf(minus.measurementResults, 0)).toBeGreaterThan(0.43);
+    expect(fractionOf(minus.measurementResults, 0)).toBeLessThan(0.57);
+  });
+
+  it("records correlated Bell-state measurements", async () => {
+    const result = await simulator.run("fn bell() { let q = new Qubit[2]; H(q[0]); X(q[1]).controlled(q[0]); measure(q[0]); measure(q[1]); }", 512);
+
+    expect(result.measurementResults.every(([first, second]) => first === second)).toBe(true);
+  });
+
+  it("uses a collapsed state for later gates and repeated measurements", async () => {
+    const result = await simulator.run("fn main() { let q = new Qubit[1]; H(q[0]); measure(q[0]); X(q[0]); measure(q[0]); }", 256);
+
+    expect(result.measurementResults.every(([first, second]) => second === (first === 0 ? 1 : 0))).toBe(true);
+    expect(result.measurementResults.every(([first, second]) => first !== second)).toBe(true);
+  });
+
+  it("supports nonzero qubit indices and preserves normalization after measurement", async () => {
+    const result = await simulator.run("fn main() { let q = new Qubit[2]; X(q[1]); measure(q[1]); }", 64);
+    const probabilitySum = Object.values(result.probabilities).reduce((sum, probability) => sum + probability, 0);
+
+    expect(result.measurementResults.every(([measurement]) => measurement === 1)).toBe(true);
+    expect(result.probabilities["10"]).toBeCloseTo(1);
+    expect(probabilitySum).toBeCloseTo(1);
+  });
+
+  it("resets a measured qubit to |0⟩", async () => {
+    const result = await simulator.run("fn main() { let q = new Qubit[1]; H(q[0]); measure(q[0]); reset(q[0]); measure(q[0]); }", 256);
+
+    expect(result.measurementResults.every(([, afterReset]) => afterReset === 0)).toBe(true);
+  });
+
+  it("preserves the remaining qubit state when resetting after measurement", async () => {
+    const result = await simulator.run("fn bell() { let q = new Qubit[2]; H(q[0]); X(q[1]).controlled(q[0]); measure(q[0]); reset(q[0]); measure(q[1]); }", 256);
+
+    expect(result.measurementResults.every(([measured, remaining]) => measured === remaining)).toBe(true);
+  });
+
+  it("rejects invalid qubit references", async () => {
+    const invalid: QuantumIR = {
+      qubits: 1,
+      operations: [{ opcode: "measure", targets: [1], controls: [], source: { start: 0, end: 0, line: 1, column: 1 } }],
+    };
+
+    await expect(simulator.runIR(invalid, 1)).rejects.toThrow("Invalid qubit index 1");
   });
 
   it("verifies state vector normalization sum = 1.0", async () => {
