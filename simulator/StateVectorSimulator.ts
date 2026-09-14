@@ -63,6 +63,9 @@ export class StateVectorSimulator implements QuantumSimulator {
     if (!Number.isInteger(shots) || shots < 1 || shots > 100_000) {
       throw new Error("Shots must be an integer between 1 and 100000.");
     }
+    if (!Number.isInteger(ir.operations.length) || ir.operations.length * shots > 10_000_000) {
+      throw new Error("Circuit execution exceeds the simulator resource limit.");
+    }
     this.cancelled = false;
     const started = performance.now();
     const counts: Record<string, number> = {};

@@ -126,6 +126,12 @@ describe("StateVectorSimulator", () => {
     await expect(simulator.runIR(ir, 100_001)).rejects.toThrow("Shots must be an integer");
   });
 
+  it("rejects circuits whose operation and shot workload is excessive", async () => {
+    const ir = { qubits: 1, operations: Array.from({ length: 10_001 }, () => ({ opcode: "x" as const, targets: [0], controls: [], source: { start: 0, end: 0, line: 1, column: 1 } })) };
+
+    await expect(simulator.runIR(ir, 1_000)).rejects.toThrow("resource limit");
+  });
+
   it("verifies state vector normalization sum = 1.0", async () => {
     const source = "fn main() { let q = new Qubit[3]; H(q[0]); H(q[1]); H(q[2]); }";
     const result = await simulator.run(source);
