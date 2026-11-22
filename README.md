@@ -190,4 +190,4 @@ QStudio is licensed under the Apache License, Version 2.0.
 
 See the LICENSE file for the full license text.
 
-                                                 Copyright © 2026 Amarpreet Singh Cheema.
+Copyright © 2026 Amarpreet Singh Cheema.
