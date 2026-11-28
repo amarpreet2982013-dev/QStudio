@@ -1,90 +1,115 @@
-# QStudio
-
-QStudio is a quantum programming environment for exploring quantum circuits, simulating their behavior, and experimenting with differentiable quantum workflows. The repository currently contains a compiled Electron/React application bundle, JavaScript backend modules, and a Python quantum-framework bridge.
+# QStudio — Quantum Programming IDE
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![JAX](https://img.shields.io/badge/JAX-quantum%20simulation-brightgreen.svg)](https://jax.readthedocs.io/)
 
-## What’s included
+**QStudio** is an environment for writing and exploring quantum programs, visualizing circuits, and simulating quantum algorithms. It combines a bundled Electron/React interface with JavaScript simulator and compiler modules and an optional Python bridge to quantum-computing frameworks.
 
-- **Circuit simulation:** a built-in state-vector simulator and a JAX-backed simulator for circuits of up to 12 qubits.
-- **JAX workflows:** unitary simulation, mid-circuit measurement and reset trajectories, analytic gradients for parameterized circuits, and vectorized parameter sweeps.
-- **Quantum ecosystem integrations:** adapters for Cirq and qsim, plus OpenFermion and Qualtran operations through the Python bridge.
-- **Language tooling:** bundled support for working with Silq, OpenQASM 2 and 3, Q#, and Quil.
-- **Desktop interface:** a compiled Electron renderer bundle with Monaco Editor assets.
+> **Repository note:** This checkout contains compiled application bundles, not the original frontend source tree. There is no `package.json` or frontend build configuration here, so the UI can be previewed as static files but cannot be rebuilt from this checkout.
 
-The JAX bridge supports `H`, `X`, `Y`, `Z`, `S`, `T`, `RX`, `RY`, `RZ`, `CX`/`CNOT`, `CZ`, `SWAP`, `ISWAP`, `CCX`/`TOFFOLI`, measurement, reset, and barrier operations. Gradients are for expectation values of parameterized unitary circuits; discrete shot sampling and mid-circuit measurement/reset are not differentiable.
+## ✨ Features
 
-## Repository layout
+- **Quantum language tooling:** bundled adapters for Silq, OpenQASM 2 and 3, Microsoft Q#, and Rigetti Quil.
+- **Circuit visualization:** interactive JAX Studio views for circuits, Bloch spheres, and parameter-sweep results.
+- **Local simulation and debugging:** a native state-vector simulator and a step-based quantum debugger.
+- **JAX quantum engine:** JIT-compiled state-vector simulation, analytic expectation-value gradients, and vectorized parameter sweeps.
+- **Mid-circuit operations:** JAX trajectory simulation supports projective measurement and reset.
+- **Framework integrations:** Python bridge adapters for Google Cirq and qsim, OpenFermion, and Qualtran.
+- **Desktop integration:** bundled Electron main/preload modules with a context-isolated renderer bridge.
+
+### JAX operation support
+
+The JAX simulator supports the following gate and circuit operations:
+
+| Category | Operations |
+|---|---|
+| Single-qubit | `H`, `X`, `Y`, `Z`, `S`, `T`, `RX`, `RY`, `RZ` |
+| Two-qubit | `CX` / `CNOT`, `CZ`, `SWAP`, `ISWAP` |
+| Three-qubit | `CCX` / `TOFFOLI` |
+| Circuit operations | `MEASURE` / `M`, `RESET`, `BARRIER` |
+
+Simulation is limited to 1–12 qubits because state-vector memory grows exponentially. Mid-circuit measurement and reset use trajectory simulation and are not supported by gradient or parameter-sweep operations. Gradients are for expectation values of parameterized unitary circuits; discrete shot sampling is not differentiable.
+
+## 🗂️ Repository layout
 
 ```text
-dist/
-  ai/                         AI provider modules
-  app/                        Electron main and preload bundles
-  backend/
-    python/                   JAX engine and Python framework bridge
-    src/                      Compiled JavaScript backend modules
-  extensions/                 Extension host bundle
-  renderer/                   Compiled application UI and assets
-  simulator/                  Native simulator and debugger
-docs/
-  JAX_INTEGRATION.md          JAX bridge details and limitations
-tests/                        JavaScript and Python tests
-requirements.txt              Python bridge dependencies
+QStudio/
+├── dist/
+│   ├── ai/                   # AI provider modules
+│   ├── app/                  # Electron main and preload bundles
+│   ├── backend/
+│   │   ├── python/           # JAX engine and Python framework bridge
+│   │   └── src/              # Compiled JavaScript compiler and adapters
+│   ├── extensions/           # Extension host
+│   ├── renderer/             # Compiled UI, Monaco assets, and JAX Studio
+│   └── simulator/            # State-vector simulator and debugger
+├── docs/
+│   └── JAX_INTEGRATION.md    # JAX commands, modes, and limitations
+├── tests/                    # JavaScript and Python tests
+└── requirements.txt          # Python bridge dependencies
 ```
 
-This checkout contains compiled application files rather than the original frontend source tree. It does not include a `package.json` or frontend build configuration, so the bundled UI cannot be rebuilt from this repository as-is.
+## 🚀 Quick start
 
-## Preview the interface
+### Preview the bundled interface
 
-With Python 3 installed, serve the compiled renderer:
+Requires Python 3; no frontend package installation is needed for this static preview:
 
 ```bash
 python3 -m http.server 5173 --directory dist/renderer
 ```
 
-Open [http://localhost:5173](http://localhost:5173) in a browser. This serves a static UI preview; Electron-only features such as native project access and IPC-backed framework operations require the desktop host.
+Open [http://localhost:5173](http://localhost:5173). This serves the renderer as static files. Features that depend on Electron IPC or native desktop access are not available in a browser-only preview.
 
-## Set up the Python bridge
+### Install Python bridge dependencies
 
-Use Python 3 and install the dependencies listed in `requirements.txt`:
+Use a Python environment for the bridge and install its dependencies:
 
 ```bash
 python3 -m pip install -r requirements.txt
 ```
 
-Check the Python runtime and available quantum frameworks:
+The bridge includes JAX and NumPy/SciPy dependencies, with Cirq, qsimcirq, OpenFermion, and Qualtran integrations. JAX uses the available backend; CPU is the typical default, while GPU or TPU use depends on the installed JAX build and hardware.
+
+## ⚛️ Use the Python bridge
+
+The bridge accepts a command as its final argument, reads an optional JSON payload from standard input, and writes a JSON response to standard output.
+
+Probe the Python runtime and available frameworks:
 
 ```bash
 python3 dist/backend/python/qstudio_bridge.py probe
 ```
 
-The bridge reads JSON from standard input and writes a JSON response to standard output. For example, simulate a two-qubit Bell circuit:
+Run a two-qubit Bell-state circuit with JAX:
 
 ```bash
 echo '{"circuit":{"name":"Bell","qubits":2,"operations":[{"gate":"H","targets":[0]},{"gate":"CX","targets":[0,1]}]},"shots":1000,"seed":7}' \
   | python3 dist/backend/python/qstudio_bridge.py jax:simulate
 ```
 
-The JAX simulator uses the available JAX backend (CPU by default; GPU/TPU when supported by the installed JAX build). State-vector memory grows exponentially with qubit count, and trajectory simulation has a lower shot limit than unitary simulation.
+Available bridge commands include `jax:probe`, `jax:simulate`, `jax:gradient`, `jax:vmap_sweep`, `cirq:simulate`, `cirq:export`, `qsim:simulate`, `qualtran:estimate`, and `openfermion:hamiltonian`. Optional frameworks are reported by the probe and require their Python dependencies to be installed.
 
-See [docs/JAX_INTEGRATION.md](docs/JAX_INTEGRATION.md) for bridge commands, execution modes, supported operations, and differentiation limitations.
+For execution modes, request payloads, and differentiation constraints, see [docs/JAX_INTEGRATION.md](docs/JAX_INTEGRATION.md).
 
-## Run tests
+## 🧪 Run tests
 
-Run the JavaScript integration and UI tests with Node.js:
+With Node.js installed, run the JavaScript integration and UI tests:
 
 ```bash
 node --test tests/jax_integration.test.js tests/ui_jax_studio.test.mjs
 ```
 
-Run the Python bridge tests with pytest:
+With the Python bridge dependencies and pytest installed, run:
 
 ```bash
 python3 -m pytest tests/test_jax_bridge.py -v
 ```
 
-The tests require the Python dependencies used by the bridge. The JavaScript integration tests also invoke the Python quantum bridge.
+The JavaScript integration tests also call into the Python bridge, so they require a working Python/JAX environment.
 
-## License
+## 📄 License
 
 QStudio is licensed under the [Apache License, Version 2.0](LICENSE).
+
+Copyright © 2026 Amarpreet Singh Cheema.
