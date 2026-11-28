@@ -278,7 +278,7 @@ electron_1.app.whenReady().then(async () => {
         if (!req || typeof req !== "object") {
             throw new Error("Invalid framework simulation request: expected object.");
         }
-        if (!["native", "cirq", "qsim"].includes(req.backend)) {
+        if (!["native", "cirq", "qsim", "jax_quantum"].includes(req.backend)) {
             throw new Error(`Unsupported simulation backend: '${req.backend}'.`);
         }
         if (!req.circuit || typeof req.circuit.qubits !== "number") {
@@ -292,6 +292,9 @@ electron_1.app.whenReady().then(async () => {
         }
         else if (req.backend === "qsim") {
             return QuantumFrameworkBridge_1.defaultFrameworkBridge.simulateQsim(req.circuit, shots, req.seed);
+        }
+        else if (req.backend === "jax_quantum") {
+            return QuantumFrameworkBridge_1.defaultFrameworkBridge.simulateJax(req.circuit, shots, req.seed);
         }
         else {
             return simulateNativeCircuit(req.circuit, shots, req.seed);
@@ -333,6 +336,24 @@ electron_1.app.whenReady().then(async () => {
         const safeShots = Number.isInteger(shots) && shots > 0 ? shots : 1024;
         return QsimAdapter_1.qsimAdapter.benchmark(circuit, safeShots);
     });
+    electron_1.ipcMain.handle("frameworks:probeJax", async (event) => {
+        validateSender(event);
+        return QuantumFrameworkBridge_1.defaultFrameworkBridge.probeJax();
+    });
+    electron_1.ipcMain.handle("frameworks:jaxGradient", async (event, request) => {
+        validateSender(event);
+        if (!request || typeof request !== "object" || !request.circuit || !Array.isArray(request.params)) {
+            throw new Error("Invalid JAX gradient request: circuit and params array required.");
+        }
+        return QuantumFrameworkBridge_1.defaultFrameworkBridge.gradientJax(request.circuit, request.params, request.observable);
+    });
+    electron_1.ipcMain.handle("frameworks:jaxVmapSweep", async (event, request) => {
+        validateSender(event);
+        if (!request || typeof request !== "object" || !request.circuit || !Array.isArray(request.paramBatch)) {
+            throw new Error("Invalid JAX vmap sweep request: circuit and paramBatch array required.");
+        }
+        return QuantumFrameworkBridge_1.defaultFrameworkBridge.vmapSweepJax(request.circuit, request.paramBatch, request.observable);
+    });
     electron_1.ipcMain.handle("frameworks:probeTfq", async (event) => {
         validateSender(event);
         return QuantumFrameworkBridge_1.defaultFrameworkBridge.probeTfq();
@@ -343,6 +364,9 @@ electron_1.app.whenReady().then(async () => {
             void createWindow();
         }
     });
+});
+electron_1.app.on("before-quit", () => {
+    QuantumFrameworkBridge_1.defaultFrameworkBridge.shutdownWorker();
 });
 electron_1.app.on("window-all-closed", () => {
     if (process.platform !== "darwin") {

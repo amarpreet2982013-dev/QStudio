@@ -1,0 +1,237 @@
+.jax-studio {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+  background: #0d1117;
+  color: #e6edf3;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid #30363d;
+}
+
+.jax-studio-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #21262d;
+}
+
+.jax-studio-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #58a6ff;
+}
+
+.jax-status-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.jax-pill {
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  color: #8b949e;
+}
+
+.jax-pill.ok {
+  border-color: #238636;
+  color: #3fb950;
+}
+
+.jax-pill.warn {
+  border-color: #9e6a03;
+  color: #d29922;
+}
+
+.jax-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.jax-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.jax-card h5 {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8b949e;
+}
+
+.jax-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.jax-controls select,
+.jax-controls input,
+.jax-textarea {
+  background: #0d1117;
+  color: #e6edf3;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.jax-textarea {
+  width: 100%;
+  min-height: 110px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.jax-btn {
+  padding: 6px 12px;
+  border-radius: 5px;
+  border: 1px solid #30363d;
+  background: #21262d;
+  color: #e6edf3;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.jax-btn:hover {
+  background: #30363d;
+}
+
+.jax-btn.primary {
+  background: #1f6feb;
+  border-color: #388bfd;
+  color: #ffffff;
+}
+
+.jax-btn.primary:hover {
+  background: #388bfd;
+}
+
+.jax-error {
+  background: rgba(248, 81, 73, 0.12);
+  border: 1px solid #f85149;
+  color: #ffa198;
+  padding: 8px 10px;
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.jax-notice {
+  background: rgba(56, 139, 253, 0.12);
+  border: 1px solid #388bfd;
+  color: #a5d6ff;
+  padding: 8px 10px;
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.jax-svg-wrap {
+  overflow-x: auto;
+  background: #0d1117;
+  border: 1px solid #21262d;
+  border-radius: 4px;
+  padding: 8px;
+}
+
+.jax-bar-row {
+  display: grid;
+  grid-template-columns: 56px 1fr 64px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.jax-bar-track {
+  height: 12px;
+  background: #0d1117;
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid #21262d;
+}
+
+.jax-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #1f6feb, #58a6ff);
+}
+
+.jax-bar-fill.counts {
+  background: linear-gradient(90deg, #238636, #3fb950);
+}
+
+.jax-bloch-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.jax-bloch-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #0d1117;
+  border: 1px solid #21262d;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 11px;
+}
+
+.jax-launcher-btn {
+  position: fixed;
+  right: 16px;
+  bottom: 36px;
+  z-index: 9999;
+  padding: 7px 12px;
+  border-radius: 18px;
+  border: 1px solid #388bfd;
+  background: #161b22;
+  color: #58a6ff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+.jax-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(1, 4, 9, 0.72);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+.jax-drawer-panel {
+  width: min(1080px, 96vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  padding: 14px;
+}

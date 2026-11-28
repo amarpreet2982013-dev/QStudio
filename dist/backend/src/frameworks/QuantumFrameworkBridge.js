@@ -60,29 +60,150 @@ class QuantumFrameworkBridge {
     scriptPath;
     defaultTimeoutMs;
     pythonExecutable;
+    useWorker;
+    worker = null;
+    workerBuffer = "";
+    nextRequestId = 1;
+    pendingRequests = new Map();
     constructor(options) {
         this.scriptPath = node_path_1.default.resolve(__dirname, "../../python/qstudio_bridge.py");
         this.defaultTimeoutMs = options?.timeoutMs ?? 20_000;
         this.pythonExecutable = options?.pythonPath ?? "python3";
+        this.useWorker = options?.useWorker ?? true;
     }
     setPythonExecutable(executable) {
-        this.pythonExecutable = executable;
+        if (this.pythonExecutable !== executable) {
+            this.pythonExecutable = executable;
+            this.shutdownWorker();
+        }
+    }
+    shutdownWorker() {
+        const proc = this.worker;
+        this.worker = null;
+        this.workerBuffer = "";
+        for (const [id, pending] of this.pendingRequests.entries()) {
+            clearTimeout(pending.timer);
+            pending.reject(new Error("Python quantum bridge worker was shut down."));
+            this.pendingRequests.delete(id);
+        }
+        if (proc && !proc.killed) {
+            try {
+                proc.stdin.end();
+                proc.kill("SIGTERM");
+            }
+            catch {
+                // ignore
+            }
+        }
+    }
+    ensureWorker() {
+        if (this.worker && !this.worker.killed && this.worker.exitCode === null) {
+            return this.worker;
+        }
+        const cleanEnv = (0, TerminalGuard_1.sanitizeEnvironment)();
+        const child = (0, node_child_process_1.spawn)(this.pythonExecutable, [this.scriptPath, "--worker"], {
+            env: cleanEnv,
+            shell: false,
+        });
+        this.worker = child;
+        this.workerBuffer = "";
+        child.stdout.on("data", (chunk) => {
+            this.workerBuffer += chunk.toString("utf8");
+            if (Buffer.byteLength(this.workerBuffer, "utf8") > exports.BRIDGE_MAX_RESULT_BYTES) {
+                const err = new Error(`Quantum framework worker exceeded ${exports.BRIDGE_MAX_RESULT_BYTES}-byte buffer limit.`);
+                for (const [id, pending] of this.pendingRequests.entries()) {
+                    clearTimeout(pending.timer);
+                    pending.reject(err);
+                    this.pendingRequests.delete(id);
+                }
+                this.shutdownWorker();
+                return;
+            }
+            let nlIdx;
+            while ((nlIdx = this.workerBuffer.indexOf("\n")) !== -1) {
+                const line = this.workerBuffer.slice(0, nlIdx).trim();
+                this.workerBuffer = this.workerBuffer.slice(nlIdx + 1);
+                if (!line)
+                    continue;
+                let parsed;
+                try {
+                    parsed = JSON.parse(line);
+                }
+                catch {
+                    continue;
+                }
+                const pending = this.pendingRequests.get(parsed.id);
+                if (!pending)
+                    continue;
+                this.pendingRequests.delete(parsed.id);
+                clearTimeout(pending.timer);
+                if (!parsed.success) {
+                    pending.reject(new Error(parsed.error || "Python worker returned an error."));
+                }
+                else {
+                    pending.resolve(parsed.data);
+                }
+            }
+        });
+        child.on("error", (err) => {
+            if (this.worker === child)
+                this.worker = null;
+            for (const [id, pending] of this.pendingRequests.entries()) {
+                clearTimeout(pending.timer);
+                pending.reject(new Error(`Failed to launch Python quantum bridge worker: ${err.message}`));
+                this.pendingRequests.delete(id);
+            }
+        });
+        child.on("close", (code) => {
+            if (this.worker === child)
+                this.worker = null;
+            for (const [id, pending] of this.pendingRequests.entries()) {
+                clearTimeout(pending.timer);
+                pending.reject(new Error(`Python bridge worker exited unexpectedly with code ${code}.`));
+                this.pendingRequests.delete(id);
+            }
+        });
+        return child;
     }
     /**
      * Execute an arbitrary bridge command with typed payload.
      */
     async executeCommand(command, payload = {}) {
+        if (estimateJsonRequestBytes(payload, exports.BRIDGE_MAX_REQUEST_BYTES) > exports.BRIDGE_MAX_REQUEST_BYTES) {
+            throw new Error(`Quantum framework request exceeds the ${exports.BRIDGE_MAX_REQUEST_BYTES}-byte or ${BRIDGE_MAX_REQUEST_NODES}-node limit.`);
+        }
+        const request = JSON.stringify(payload);
+        const requestBytes = Buffer.byteLength(request, "utf8");
+        if (requestBytes > exports.BRIDGE_MAX_REQUEST_BYTES) {
+            throw new Error(`Quantum framework request is ${requestBytes} bytes; maximum allowed size is ${exports.BRIDGE_MAX_REQUEST_BYTES} bytes.`);
+        }
+        if (this.useWorker) {
+            return this.executeViaWorker(command, payload);
+        }
+        return this.executeOneShot(command, request);
+    }
+    executeViaWorker(command, payload) {
         return new Promise((resolve, reject) => {
-            if (estimateJsonRequestBytes(payload, exports.BRIDGE_MAX_REQUEST_BYTES) > exports.BRIDGE_MAX_REQUEST_BYTES) {
-                reject(new Error(`Quantum framework request exceeds the ${exports.BRIDGE_MAX_REQUEST_BYTES}-byte or ${BRIDGE_MAX_REQUEST_NODES}-node limit.`));
-                return;
-            }
-            const request = JSON.stringify(payload);
-            const requestBytes = Buffer.byteLength(request, "utf8");
-            if (requestBytes > exports.BRIDGE_MAX_REQUEST_BYTES) {
-                reject(new Error(`Quantum framework request is ${requestBytes} bytes; maximum allowed size is ${exports.BRIDGE_MAX_REQUEST_BYTES} bytes.`));
-                return;
-            }
+            const worker = this.ensureWorker();
+            const id = this.nextRequestId++;
+            const timer = setTimeout(() => {
+                this.pendingRequests.delete(id);
+                reject(new Error(`Quantum framework operation '${command}' timed out after ${this.defaultTimeoutMs}ms.`));
+                this.shutdownWorker();
+            }, this.defaultTimeoutMs);
+            this.pendingRequests.set(id, { resolve, reject, timer });
+            const line = JSON.stringify({ id, command, payload }) + "\n";
+            worker.stdin.write(line, (err) => {
+                if (err && this.pendingRequests.has(id)) {
+                    clearTimeout(timer);
+                    this.pendingRequests.delete(id);
+                    reject(new Error(`Failed to write to Python worker: ${err.message}`));
+                }
+            });
+        });
+    }
+    executeOneShot(command, request) {
+        return new Promise((resolve, reject) => {
             let settled = false;
             const cleanEnv = (0, TerminalGuard_1.sanitizeEnvironment)();
             const args = [this.scriptPath, command];
@@ -262,6 +383,21 @@ class QuantumFrameworkBridge {
                         limitations: ["Requires Python"],
                         error: "Python bridge unavailable",
                     },
+                    jax_quantum: {
+                        id: "jax_quantum",
+                        name: "JAX Quantum (QML & Autodiff)",
+                        category: "qml",
+                        available: false,
+                        description: "JIT-compiled, hardware-accelerated differentiable quantum simulation and VQE/QML workflows using JAX.",
+                        docsUrl: "https://jax.readthedocs.io",
+                        capabilities: [
+                            "JIT-compiled state-vector simulation (jax.jit)",
+                            "Exact analytic gradients (jax.value_and_grad)",
+                            "Vectorized parameter sweeps (jax.vmap)",
+                        ],
+                        limitations: ["Requires Python environment with jax installed"],
+                        error: "Python bridge unavailable",
+                    },
                     tensorflow_quantum: {
                         id: "tensorflow_quantum",
                         name: "TensorFlow Quantum (TFQ)",
@@ -324,7 +460,44 @@ class QuantumFrameworkBridge {
         return this.executeCommand("openfermion:hamiltonian", request);
     }
     /**
-     * Probe TensorFlow Quantum compatibility.
+     * Probe JAX Quantum runtime and available XLA devices.
+     */
+    async probeJax() {
+        return this.executeCommand("jax:probe");
+    }
+    /**
+     * Run state-vector simulation using JAX backend.
+     */
+    async simulateJax(circuit, shots = 1024, seed) {
+        validateSimulationSeed(seed);
+        return this.executeCommand("jax:simulate", {
+            circuit,
+            shots,
+            ...(seed === undefined ? {} : { seed }),
+        });
+    }
+    /**
+     * Compute expectation value and exact analytic gradient via jax.value_and_grad.
+     */
+    async gradientJax(circuit, params, observable) {
+        return this.executeCommand("jax:gradient", {
+            circuit,
+            params,
+            observable,
+        });
+    }
+    /**
+     * Evaluate a batch of parameter vectors via jax.vmap.
+     */
+    async vmapSweepJax(circuit, paramBatch, observable) {
+        return this.executeCommand("jax:vmap_sweep", {
+            circuit,
+            paramBatch,
+            observable,
+        });
+    }
+    /**
+     * Probe TensorFlow Quantum compatibility (legacy).
      */
     async probeTfq() {
         return this.executeCommand("tfq:probe");

@@ -12,8 +12,8 @@ class TensorFlowQuantumAdapter {
     }
     getDocumentation() {
         return {
-            title: "Google TensorFlow Quantum (TFQ)",
-            summary: "TensorFlow Quantum is a library for hybrid quantum-classical machine learning that integrates Cirq with TensorFlow.",
+            title: "Google TensorFlow Quantum (TFQ) [Legacy — Replaced by JAX Quantum]",
+            summary: "TensorFlow Quantum is a legacy library for hybrid quantum-classical machine learning that requires Python <= 3.10 and TensorFlow 2.x. QStudio now recommends JAX Quantum (JaxQuantumAdapter) for differentiable QML, jax.jit, and jax.vmap.",
             workflowArchitecture: [
                 "1. Classical Input Pipeline: Prepare classical or quantum batch datasets via tf.data.",
                 "2. Parameterized Quantum Circuit (PQC): Build parameterized Cirq ansatz with sympy.Symbol parameters.",

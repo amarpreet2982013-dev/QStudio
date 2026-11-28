@@ -1,0 +1,11 @@
+# QStudio Python Quantum Framework Bridge Dependencies
+# Core differentiable quantum simulation (replaces legacy TensorFlow Quantum)
+jax>=0.4.20
+numpy>=1.26.0
+scipy>=1.12.0
+
+# Optional Google Quantum AI ecosystem integrations
+cirq>=1.4.0
+qsimcirq>=0.18.0
+openfermion>=1.6.0
+qualtran>=0.4.0

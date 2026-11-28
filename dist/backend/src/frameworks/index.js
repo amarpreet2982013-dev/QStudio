@@ -20,4 +20,5 @@ __exportStar(require("./CirqAdapter"), exports);
 __exportStar(require("./QsimAdapter"), exports);
 __exportStar(require("./QualtranAdapter"), exports);
 __exportStar(require("./OpenFermionAdapter"), exports);
+__exportStar(require("./JaxQuantumAdapter"), exports);
 __exportStar(require("./TensorFlowQuantumAdapter"), exports);

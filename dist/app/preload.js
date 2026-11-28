@@ -15,6 +15,9 @@ const ALLOWED_CHANNELS = new Set([
     "frameworks:estimateQualtran",
     "frameworks:openfermion",
     "frameworks:benchmark",
+    "frameworks:probeJax",
+    "frameworks:jaxGradient",
+    "frameworks:jaxVmapSweep",
     "frameworks:probeTfq",
 ]);
 function invokeAllowed(channel, ...args) {
@@ -84,6 +87,17 @@ electron_1.contextBridge.exposeInMainWorld("silq", Object.freeze({
             if (!circuit || typeof circuit !== "object")
                 throw new TypeError("Invalid circuit model.");
             return invokeAllowed("frameworks:benchmark", circuit, shots);
+        },
+        probeJax: () => invokeAllowed("frameworks:probeJax"),
+        jaxGradient: (req) => {
+            if (!req || typeof req !== "object")
+                throw new TypeError("Invalid JAX gradient request.");
+            return invokeAllowed("frameworks:jaxGradient", req);
+        },
+        jaxVmapSweep: (req) => {
+            if (!req || typeof req !== "object")
+                throw new TypeError("Invalid JAX vmap sweep request.");
+            return invokeAllowed("frameworks:jaxVmapSweep", req);
         },
         probeTfq: () => invokeAllowed("frameworks:probeTfq"),
     },
